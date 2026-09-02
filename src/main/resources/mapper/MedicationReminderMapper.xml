@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.elderly.mapper.MedicationReminderMapper">
+
+    <resultMap id="reminderMap" type="com.elderly.entity.MedicationReminder">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="drugName" column="drug_name"/>
+        <result property="doseTime" column="dose_time"/>
+        <result property="dosage" column="dosage"/>
+        <result property="note" column="note"/>
+        <result property="enabled" column="enabled"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <sql id="cols">
+        id, user_id, drug_name, dose_time, dosage, note, enabled, create_time
+    </sql>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO medication_reminder (user_id, drug_name, dose_time, dosage, note, enabled, create_time)
+        VALUES (#{userId}, #{drugName}, #{doseTime}, #{dosage}, #{note},
+                #{enabled, jdbcType=INTEGER}, NOW())
+    </insert>
+
+    <update id="update">
+        UPDATE medication_reminder
+        SET drug_name = #{drugName},
+            dose_time = #{doseTime},
+            dosage    = #{dosage},
+            note      = #{note},
+            enabled   = #{enabled, jdbcType=INTEGER}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM medication_reminder WHERE id = #{id}
+    </delete>
+
+    <select id="selectByUserId" resultMap="reminderMap">
+        SELECT <include refid="cols"/> FROM medication_reminder
+        WHERE user_id = #{userId} ORDER BY dose_time ASC
+    </select>
+
+    <select id="selectEnabledByUserId" resultMap="reminderMap">
+        SELECT <include refid="cols"/> FROM medication_reminder
+        WHERE user_id = #{userId} AND enabled = 1
+        ORDER BY dose_time ASC
+    </select>
+
+</mapper>

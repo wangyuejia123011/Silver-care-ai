@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.elderly.mapper.HealthRecordMapper">
+
+    <resultMap id="recordMap" type="com.elderly.entity.HealthRecord">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="elderlyName" column="elderly_name"/>
+        <result property="age" column="age"/>
+        <result property="systolicPressure" column="systolic_pressure"/>
+        <result property="diastolicPressure" column="diastolic_pressure"/>
+        <result property="heartRate" column="heart_rate"/>
+        <result property="bloodSugar" column="blood_sugar"/>
+        <result property="temperature" column="temperature"/>
+        <result property="source" column="source"/>
+        <result property="voiceText" column="voice_text"/>
+        <result property="riskLevel" column="risk_level"/>
+        <result property="aiAdvice" column="ai_advice"/>
+        <result property="isAlert" column="is_alert"/>
+        <result property="recordTime" column="record_time"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <sql id="cols">
+        id, user_id, elderly_name, age, systolic_pressure, diastolic_pressure,
+        heart_rate, blood_sugar, temperature, source, voice_text, risk_level, ai_advice, is_alert, record_time, create_time
+    </sql>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO health_record (user_id, elderly_name, age, systolic_pressure, diastolic_pressure,
+                                   heart_rate, blood_sugar, temperature, source, voice_text, risk_level,
+                                   ai_advice, is_alert, record_time, create_time)
+        VALUES (#{userId}, #{elderlyName}, #{age}, #{systolicPressure}, #{diastolicPressure},
+                #{heartRate}, #{bloodSugar}, #{temperature}, #{source}, #{voiceText},
+                IFNULL(#{riskLevel}, 'low'), #{aiAdvice}, #{isAlert},
+                <choose>
+                    <when test="recordTime != null">#{recordTime}</when>
+                    <otherwise>NOW()</otherwise>
+                </choose>,
+                NOW())
+    </insert>
+
+    <select id="selectById" resultMap="recordMap">
+        SELECT <include refid="cols"/> FROM health_record WHERE id = #{id}
+    </select>
+
+    <select id="selectByUserId" resultMap="recordMap">
+        SELECT <include refid="cols"/> FROM health_record
+        WHERE user_id = #{userId} ORDER BY record_time DESC
+    </select>
+
+    <select id="selectLatestByUserId" resultMap="recordMap">
+        SELECT <include refid="cols"/> FROM health_record
+        WHERE user_id = #{userId} ORDER BY record_time DESC LIMIT 1
+    </select>
+
+    <select id="selectRecentByUserId" resultMap="recordMap">
+        SELECT <include refid="cols"/> FROM health_record
+        WHERE user_id = #{userId}
+        ORDER BY record_time DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectTodayByUserId" resultMap="recordMap">
+        SELECT <include refid="cols"/> FROM health_record
+        WHERE user_id = #{userId}
+          AND record_time BETWEEN #{dayStart} AND #{dayEnd}
+        ORDER BY record_time DESC
+    </select>
+
+    <select id="countByTimeRange" resultType="int">
+        SELECT COUNT(*) FROM health_record
+        WHERE create_time BETWEEN #{start} AND #{end}
+    </select>
+
+    <select id="countHighRiskByTimeRange" resultType="int">
+        SELECT COUNT(*) FROM health_record
+        WHERE is_alert = 1 AND create_time BETWEEN #{start} AND #{end}
+    </select>
+
+    <select id="selectByTimeRange" resultMap="recordMap">
+        SELECT <include refid="cols"/> FROM health_record
+        WHERE create_time BETWEEN #{start} AND #{end}
+        ORDER BY record_time DESC
+    </select>
+
+</mapper>

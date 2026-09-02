@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.elderly.mapper.ElderlyUserMapper">
+
+    <resultMap id="userMap" type="com.elderly.entity.ElderlyUser">
+        <id property="id" column="id"/>
+        <result property="openId" column="open_id"/>
+        <result property="name" column="name"/>
+        <result property="phone" column="phone"/>
+        <result property="gender" column="gender"/>
+        <result property="age" column="age"/>
+        <result property="address" column="address"/>
+        <result property="emergencyContact" column="emergency_contact"/>
+        <result property="emergencyPhone" column="emergency_phone"/>
+        <result property="avatar" column="avatar"/>
+        <result property="remark" column="remark"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+
+    <sql id="cols">
+        id, open_id, name, phone, gender, age, address,
+        emergency_contact, emergency_phone, avatar, remark, create_time, update_time
+    </sql>
+
+    <select id="selectById" resultMap="userMap">
+        SELECT <include refid="cols"/> FROM elderly_user WHERE id = #{id}
+    </select>
+
+    <select id="selectByOpenId" resultMap="userMap">
+        SELECT <include refid="cols"/> FROM elderly_user WHERE open_id = #{openId}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO elderly_user (open_id, name, phone, gender, age, address,
+                                  emergency_contact, emergency_phone, avatar, remark, create_time, update_time)
+        VALUES (#{openId}, #{name}, #{phone}, #{gender}, #{age}, #{address},
+                #{emergencyContact}, #{emergencyPhone}, #{avatar}, #{remark}, NOW(), NOW())
+    </insert>
+
+    <update id="update">
+        UPDATE elderly_user
+        <set>
+            <if test="name != null">name = #{name},</if>
+            <if test="phone != null">phone = #{phone},</if>
+            <if test="gender != null">gender = #{gender},</if>
+            <if test="age != null">age = #{age},</if>
+            <if test="address != null">address = #{address},</if>
+            <if test="emergencyContact != null">emergency_contact = #{emergencyContact},</if>
+            <if test="emergencyPhone != null">emergency_phone = #{emergencyPhone},</if>
+            <if test="avatar != null">avatar = #{avatar},</if>
+            <if test="remark != null">remark = #{remark},</if>
+            update_time = NOW()
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <select id="selectAll" resultMap="userMap">
+        SELECT <include refid="cols"/> FROM elderly_user ORDER BY create_time DESC
+    </select>
+
+</mapper>

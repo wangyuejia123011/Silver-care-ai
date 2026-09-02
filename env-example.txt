@@ -1,0 +1,44 @@
+# 银龄智护后端 · 微信云托管环境变量清单
+# ============================================================
+# 用途：在「微信云托管控制台 → 服务设置 → 环境变量」逐项添加，
+#       变量名必须与下方完全一致（大小写敏感）。
+# 说明：以下敏感值请勿提交到代码仓库，在控制台填写即可。
+#       本文件仅作对照清单，不要把真实密钥写回代码。
+#
+# 对应代码位置：Silver-后端/src/main/resources/application.properties
+# （其中的 ${变量名:默认值} 会被这里设置的环境变量覆盖；
+#   现在默认值已清空，所以控制台“必须”填写带 * 的必填项，否则启动后功能不可用）
+# ============================================================
+
+# ---------- 数据库（必填*，使用云托管 MySQL 内网地址）----------
+DB_URL=jdbc:mysql://<云托管MySQL内网地址>:3306/elderly_ai?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+DB_USERNAME=root
+DB_PASSWORD=<你的数据库密码>
+
+# ---------- Redis（可选；不填则容器内无 Redis，自动降级不影响主流程）----------
+REDIS_HOST=<云托管Redis内网地址>
+REDIS_PORT=6379
+
+# ---------- Chroma 向量库（可选；不填则 RAG 降级为直连大模型）----------
+CHROMA_URL=<chroma服务地址，如 http://xxx:8001>
+
+# ---------- 百度语音（必填*，从 百度智能云控制台 ai.baidu.com 获取）----------
+BAIDU_APP_ID=<百度APP_ID>
+BAIDU_API_KEY=<百度API_KEY>
+BAIDU_SECRET_KEY=<百度SECRET_KEY>
+
+# ---------- 阿里云百炼大模型（必填*，DashScope API Key，格式 sk-xxx）----------
+AI_ALIYUN_DASHSCOPE_API_KEY=<sk-xxxxxxxx>
+
+# ---------- 微信小程序（必填*，从 mp.weixin.qq.com 开发设置获取）----------
+WX_APP_ID=<你的小程序AppID>
+WX_APP_SECRET=<你的小程序AppSecret>
+
+# ---------- 微信小程序版本状态：formal=正式版 / trial=体验版 / developer=开发版 ----------
+WX_MINIPROGRAM_STATE=trial
+
+# ---------- 服务端口（微信云托管会自动注入 PORT，无需手动设置；此处仅供说明）----------
+# PORT=80
+
+# ---------- CORS（生产建议改为前端/小程序域名白名单，开发期可用 *）----------
+CORS_ALLOWED_ORIGINS=*

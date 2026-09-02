@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.elderly.mapper.CareOrderMapper">
+
+    <resultMap id="orderMap" type="com.elderly.entity.CareOrder">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="elderlyName" column="elderly_name"/>
+        <result property="address" column="address"/>
+        <result property="phone" column="phone"/>
+        <result property="orderType" column="order_type"/>
+        <result property="demand" column="demand"/>
+        <result property="orderContent" column="order_content"/>
+        <result property="needMedicalDevice" column="need_medical_device"/>
+        <result property="status" column="status"/>
+        <result property="handlerName" column="handler_name"/>
+        <result property="caregiverId" column="caregiver_id"/>
+        <result property="assignedTime" column="assigned_time"/>
+        <result property="createTime" column="create_time"/>
+        <result property="finishTime" column="finish_time"/>
+    </resultMap>
+
+    <sql id="cols">
+        id, user_id, elderly_name, address, phone, order_type, demand, order_content,
+        need_medical_device, status, handler_name, caregiver_id, assigned_time, create_time, finish_time
+    </sql>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO care_order (user_id, elderly_name, address, phone, order_type, demand,
+                                order_content, need_medical_device, status, create_time)
+        VALUES (#{userId}, #{elderlyName}, #{address}, #{phone}, #{orderType}, #{demand},
+                #{orderContent}, #{needMedicalDevice},
+                <choose>
+                    <when test="status != null">#{status}</when>
+                    <otherwise>'pending'</otherwise>
+                </choose>,
+                NOW())
+    </insert>
+
+    <select id="selectById" resultMap="orderMap">
+        SELECT <include refid="cols"/> FROM care_order WHERE id = #{id}
+    </select>
+
+    <select id="selectByUserId" resultMap="orderMap">
+        SELECT <include refid="cols"/> FROM care_order
+        WHERE user_id = #{userId} ORDER BY create_time DESC
+    </select>
+
+    <update id="updateStatus">
+        UPDATE care_order SET status = #{status},
+        <if test="handlerName != null">handler_name = #{handlerName},</if>
+        <if test="status == 'done'">finish_time = NOW(),</if>
+        update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <select id="countByTimeRange" resultType="int">
+        SELECT COUNT(*) FROM care_order
+        WHERE create_time BETWEEN #{start} AND #{end}
+    </select>
+
+    <select id="selectPending" resultMap="orderMap">
+        SELECT <include refid="cols"/> FROM care_order
+        WHERE status = 'pending' ORDER BY create_time ASC
+    </select>
+
+    <select id="selectByCaregiverId" resultMap="orderMap">
+        SELECT <include refid="cols"/> FROM care_order
+        WHERE caregiver_id = #{caregiverId}
+        ORDER BY CASE status WHEN 'assigned' THEN 0 ELSE 1 END, create_time DESC
+    </select>
+
+    <update id="assignCaregiver">
+        UPDATE care_order SET status = 'assigned', caregiver_id = #{caregiverId},
+                              handler_name = #{handlerName}, assigned_time = NOW(),
+                              update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+</mapper>

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.elderly.mapper.HealthNotifyMapper">
+
+    <resultMap id="notifyMap" type="com.elderly.entity.HealthNotify">
+        <id property="id" column="id"/>
+        <result property="elderlyUserId" column="elderly_user_id"/>
+        <result property="elderlyName" column="elderly_name"/>
+        <result property="recordId" column="record_id"/>
+        <result property="bindId" column="bind_id"/>
+        <result property="receiverRole" column="receiver_role"/>
+        <result property="receiverName" column="receiver_name"/>
+        <result property="receiverOpenId" column="receiver_open_id"/>
+        <result property="caregiverId" column="caregiver_id"/>
+        <result property="riskLevel" column="risk_level"/>
+        <result property="title" column="title"/>
+        <result property="content" column="content"/>
+        <result property="voiceText" column="voice_text"/>
+        <result property="status" column="status"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <sql id="cols">
+        id, elderly_user_id, elderly_name, record_id, bind_id, receiver_role, receiver_name,
+        receiver_open_id, caregiver_id, risk_level, title, content, voice_text, status, create_time
+    </sql>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO health_notify (elderly_user_id, elderly_name, record_id, bind_id, receiver_role,
+                                   receiver_name, receiver_open_id, caregiver_id, risk_level, title,
+                                   content, voice_text, status, create_time)
+        VALUES (#{elderlyUserId}, #{elderlyName}, #{recordId}, #{bindId}, #{receiverRole},
+                #{receiverName}, #{receiverOpenId}, #{caregiverId}, #{riskLevel}, #{title},
+                #{content}, #{voiceText}, IFNULL(#{status}, 'unread'), NOW())
+    </insert>
+
+    <select id="selectById" resultMap="notifyMap">
+        SELECT <include refid="cols"/> FROM health_notify WHERE id = #{id}
+    </select>
+
+    <update id="markRead">
+        UPDATE health_notify SET status = 'read' WHERE id = #{id}
+    </update>
+
+    <select id="selectByReceiverOpenId" resultMap="notifyMap">
+        SELECT <include refid="cols"/> FROM health_notify
+        WHERE receiver_open_id = #{openId} ORDER BY create_time DESC
+    </select>
+
+    <select id="selectByCaregiverId" resultMap="notifyMap">
+        SELECT <include refid="cols"/> FROM health_notify
+        WHERE caregiver_id = #{caregiverId} ORDER BY create_time DESC
+    </select>
+
+    <select id="countUnreadByOpenId" resultType="int">
+        SELECT COUNT(*) FROM health_notify
+        WHERE receiver_open_id = #{openId} AND status = 'unread'
+    </select>
+
+    <select id="countUnreadByCaregiverId" resultType="int">
+        SELECT COUNT(*) FROM health_notify
+        WHERE caregiver_id = #{caregiverId} AND status = 'unread'
+    </select>
+</mapper>

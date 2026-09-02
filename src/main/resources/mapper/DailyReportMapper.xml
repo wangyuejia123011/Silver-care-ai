@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.elderly.mapper.DailyReportMapper">
+
+    <resultMap id="reportMap" type="com.elderly.entity.DailyReport">
+        <id property="id" column="id"/>
+        <result property="reportDate" column="report_date"/>
+        <result property="healthRecordCount" column="health_record_count"/>
+        <result property="highRiskCount" column="high_risk_count"/>
+        <result property="fraudBlockCount" column="fraud_block_count"/>
+        <result property="orderCount" column="order_count"/>
+        <result property="summary" column="summary"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO daily_report (report_date, health_record_count, high_risk_count,
+                                  fraud_block_count, order_count, summary, create_time)
+        VALUES (#{reportDate}, #{healthRecordCount}, #{highRiskCount},
+                #{fraudBlockCount}, #{orderCount}, #{summary}, NOW())
+    </insert>
+
+    <select id="selectByDate" resultMap="reportMap">
+        SELECT id, report_date, health_record_count, high_risk_count,
+               fraud_block_count, order_count, summary, create_time
+        FROM daily_report WHERE report_date = #{reportDate}
+    </select>
+
+    <update id="updateById">
+        UPDATE daily_report
+        SET health_record_count = #{healthRecordCount},
+            high_risk_count = #{highRiskCount},
+            fraud_block_count = #{fraudBlockCount},
+            order_count = #{orderCount},
+            summary = #{summary}
+        WHERE id = #{id}
+    </update>
+
+    <select id="selectRecent" resultMap="reportMap">
+        SELECT id, report_date, health_record_count, high_risk_count,
+               fraud_block_count, order_count, summary, create_time
+        FROM daily_report ORDER BY report_date DESC LIMIT #{days}
+    </select>
+
+</mapper>

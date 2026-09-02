@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.elderly.mapper.CaregiverMapper">
+
+    <resultMap id="caregiverMap" type="com.elderly.entity.Caregiver">
+        <id property="id" column="id"/>
+        <result property="name" column="name"/>
+        <result property="phone" column="phone"/>
+        <result property="gender" column="gender"/>
+        <result property="age" column="age"/>
+        <result property="skills" column="skills"/>
+        <result property="area" column="area"/>
+        <result property="currentOrderCount" column="current_order_count"/>
+        <result property="totalOrderCount" column="total_order_count"/>
+        <result property="status" column="status"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <sql id="cols">
+        id, name, phone, gender, age, skills, area, current_order_count, total_order_count, status, create_time
+    </sql>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO caregiver (name, phone, gender, age, skills, area, current_order_count, total_order_count, status, create_time)
+        VALUES (#{name}, #{phone}, #{gender}, #{age}, #{skills}, #{area}, 0, 0, 'on', NOW())
+    </insert>
+
+    <select id="selectById" resultMap="caregiverMap">
+        SELECT <include refid="cols"/> FROM caregiver WHERE id = #{id}
+    </select>
+
+    <select id="selectAll" resultMap="caregiverMap">
+        SELECT <include refid="cols"/> FROM caregiver
+        WHERE status = 'on' ORDER BY current_order_count ASC
+    </select>
+
+    <select id="selectBySkill" resultMap="caregiverMap">
+        SELECT <include refid="cols"/> FROM caregiver
+        WHERE status = 'on' AND skills LIKE CONCAT('%"', #{skill}, '"%')
+        ORDER BY current_order_count ASC
+    </select>
+
+    <update id="increaseOrderCount">
+        UPDATE caregiver SET current_order_count = current_order_count + 1,
+                             total_order_count = total_order_count + 1
+        WHERE id = #{id}
+    </update>
+
+    <update id="decreaseOrderCount">
+        UPDATE caregiver SET current_order_count = GREATEST(current_order_count - 1, 0)
+        WHERE id = #{id}
+    </update>
+
+    <select id="selectTopByTotal" resultMap="caregiverMap">
+        SELECT <include refid="cols"/> FROM caregiver
+        ORDER BY total_order_count DESC LIMIT #{limit}
+    </select>
+
+</mapper>

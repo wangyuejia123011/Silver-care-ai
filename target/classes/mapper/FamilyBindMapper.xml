@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.elderly.mapper.FamilyBindMapper">
+
+    <resultMap id="bindMap" type="com.elderly.entity.FamilyBind">
+        <id property="id" column="id"/>
+        <result property="elderlyUserId" column="elderly_user_id"/>
+        <result property="role" column="role"/>
+        <result property="name" column="name"/>
+        <result property="phone" column="phone"/>
+        <result property="openId" column="open_id"/>
+        <result property="caregiverId" column="caregiver_id"/>
+        <result property="notifyEnabled" column="notify_enabled"/>
+        <result property="createTime" column="create_time"/>
+        <result property="elderlyName" column="elderly_name"/>
+        <result property="elderlyAddress" column="elderly_address"/>
+    </resultMap>
+
+    <sql id="cols">
+        id, elderly_user_id, role, name, phone, open_id, caregiver_id, notify_enabled, create_time
+    </sql>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO family_bind (elderly_user_id, role, name, phone, open_id, caregiver_id, notify_enabled, create_time)
+        VALUES (#{elderlyUserId}, #{role}, #{name}, #{phone}, #{openId}, #{caregiverId},
+                IFNULL(#{notifyEnabled}, 1), NOW())
+    </insert>
+
+    <delete id="deleteById">
+        DELETE FROM family_bind WHERE id = #{id}
+    </delete>
+
+    <update id="updateById">
+        UPDATE family_bind
+        SET open_id = #{openId},
+            notify_enabled = IFNULL(#{notifyEnabled}, notify_enabled)
+        WHERE id = #{id}
+    </update>
+
+    <select id="selectById" resultMap="bindMap">
+        SELECT <include refid="cols"/> FROM family_bind WHERE id = #{id}
+    </select>
+
+    <select id="selectByElderlyUserId" resultMap="bindMap">
+        SELECT <include refid="cols"/> FROM family_bind
+        WHERE elderly_user_id = #{elderlyUserId} ORDER BY create_time DESC
+    </select>
+
+    <select id="selectEnabledByElderlyUserId" resultMap="bindMap">
+        SELECT <include refid="cols"/> FROM family_bind
+        WHERE elderly_user_id = #{elderlyUserId} AND IFNULL(notify_enabled, 1) = 1
+        ORDER BY create_time DESC
+    </select>
+
+    <select id="selectByOpenId" resultMap="bindMap">
+        SELECT b.id, b.elderly_user_id, b.role, b.name, b.phone, b.open_id, b.caregiver_id,
+               b.notify_enabled, b.create_time, u.name AS elderly_name, u.address AS elderly_address
+        FROM family_bind b
+        LEFT JOIN elderly_user u ON u.id = b.elderly_user_id
+        WHERE b.open_id = #{openId}
+        LIMIT 1
+    </select>
+
+    <select id="selectByCaregiverId" resultMap="bindMap">
+        SELECT b.id, b.elderly_user_id, b.role, b.name, b.phone, b.open_id, b.caregiver_id,
+               b.notify_enabled, b.create_time, u.name AS elderly_name, u.address AS elderly_address
+        FROM family_bind b
+        LEFT JOIN elderly_user u ON u.id = b.elderly_user_id
+        WHERE b.caregiver_id = #{caregiverId}
+        ORDER BY b.create_time DESC
+    </select>
+</mapper>

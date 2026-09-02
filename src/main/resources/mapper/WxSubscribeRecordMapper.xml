@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.elderly.mapper.WxSubscribeRecordMapper">
+
+    <resultMap id="recordMap" type="com.elderly.entity.WxSubscribeRecord">
+        <id property="id" column="id"/>
+        <result property="openId" column="open_id"/>
+        <result property="bindId" column="bind_id"/>
+        <result property="templateId" column="template_id"/>
+        <result property="authType" column="auth_type"/>
+        <result property="remainCount" column="remain_count"/>
+        <result property="authTime" column="auth_time"/>
+        <result property="sendTime" column="send_time"/>
+        <result property="sendStatus" column="send_status"/>
+        <result property="failReason" column="fail_reason"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO wx_subscribe_record (open_id, bind_id, template_id, auth_type, remain_count,
+                                         auth_time, send_time, send_status, fail_reason, create_time, update_time)
+        VALUES (#{openId}, #{bindId}, #{templateId}, #{authType}, #{remainCount},
+                #{authTime}, #{sendTime}, #{sendStatus}, #{failReason}, NOW(), NOW())
+    </insert>
+
+    <update id="updateById">
+        UPDATE wx_subscribe_record
+        SET open_id = #{openId},
+            bind_id = #{bindId},
+            template_id = #{templateId},
+            auth_type = #{authType},
+            remain_count = #{remainCount},
+            auth_time = #{authTime},
+            send_time = #{sendTime},
+            send_status = #{sendStatus},
+            fail_reason = #{failReason},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <select id="selectAvailable" resultMap="recordMap">
+        SELECT id, open_id, bind_id, template_id, auth_type, remain_count,
+               auth_time, send_time, send_status, fail_reason, create_time, update_time
+        FROM wx_subscribe_record
+        WHERE open_id = #{openId}
+          AND template_id = #{templateId}
+          AND (
+              auth_type = 'permanent'
+              OR (auth_type = 'once' AND remain_count > 0)
+          )
+        ORDER BY auth_time DESC
+        LIMIT 1
+    </select>
+
+    <select id="selectLatestByOpenId" resultMap="recordMap">
+        SELECT id, open_id, bind_id, template_id, auth_type, remain_count,
+               auth_time, send_time, send_status, fail_reason, create_time, update_time
+        FROM wx_subscribe_record
+        WHERE open_id = #{openId}
+          AND template_id = #{templateId}
+        ORDER BY auth_time DESC
+        LIMIT 1
+    </select>
+
+</mapper>

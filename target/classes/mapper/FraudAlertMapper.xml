@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.elderly.mapper.FraudAlertMapper">
+
+    <resultMap id="alertMap" type="com.elderly.entity.FraudAlert">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="elderlyName" column="elderly_name"/>
+        <result property="content" column="content"/>
+        <result property="hitKeywords" column="hit_keywords"/>
+        <result property="riskLevel" column="risk_level"/>
+        <result property="detectType" column="detect_type"/>
+        <result property="aiTip" column="ai_tip"/>
+        <result property="matchedCases" column="matched_cases"/>
+        <result property="isHandled" column="is_handled"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <sql id="cols">
+        id, user_id, elderly_name, content, hit_keywords, risk_level,
+        detect_type, ai_tip, matched_cases, is_handled, create_time
+    </sql>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO fraud_alert (user_id, elderly_name, content, hit_keywords, risk_level,
+                                 detect_type, ai_tip, matched_cases, is_handled, create_time)
+        VALUES (#{userId}, #{elderlyName}, #{content}, #{hitKeywords}, #{riskLevel},
+                #{detectType}, #{aiTip}, #{matchedCases}, 0, NOW())
+    </insert>
+
+    <select id="selectByUserId" resultMap="alertMap">
+        SELECT <include refid="cols"/> FROM fraud_alert
+        WHERE user_id = #{userId} ORDER BY create_time DESC
+    </select>
+
+    <select id="countByTimeRange" resultType="int">
+        SELECT COUNT(*) FROM fraud_alert
+        WHERE create_time BETWEEN #{start} AND #{end}
+    </select>
+
+    <select id="selectUnhandled" resultMap="alertMap">
+        SELECT <include refid="cols"/> FROM fraud_alert
+        WHERE is_handled = 0 ORDER BY create_time DESC
+    </select>
+
+</mapper>
