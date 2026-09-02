@@ -84,6 +84,10 @@ public class VoiceAgent {
 
         if (rawText == null || rawText.isBlank()) {
             result.put("text", "");
+            // 透传百度原始错误信息，便于前端排查
+            if (asrResult.containsKey("err_msg")) {
+                result.put("error", asrResult.get("err_msg"));
+            }
             return result;
         }
 

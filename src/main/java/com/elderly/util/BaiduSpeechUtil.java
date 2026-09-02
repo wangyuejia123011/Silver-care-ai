@@ -134,11 +134,14 @@ public class BaiduSpeechUtil {
             }
 
             HashMap<String, Object> result = new HashMap<>(jsonResult.toMap());
+            // 百度 AIP 返回文本在 result 数组（无 text 字段），统一提取到 text 供上层使用
+            String recognized = extractResultText(jsonResult);
+            if (!recognized.isEmpty()) {
+                result.put("text", recognized);
+            }
             log.info("百度ASR识别成功: dialect={}, text={}, score={}",
                     dialect,
-                    jsonResult.optString("text", "").length() > 50
-                            ? jsonResult.optString("text").substring(0, 50) + "…"
-                            : jsonResult.optString("text", ""),
+                    recognized.length() > 50 ? recognized.substring(0, 50) + "…" : recognized,
                     jsonResult.optDouble("score", 0));
             return result;
 
@@ -148,6 +151,26 @@ public class BaiduSpeechUtil {
             failResult.put("err_msg", "ASR调用异常: " + e.getMessage());
             return failResult;
         }
+    }
+
+    /**
+     * 从百度 ASR 返回值中提取识别文本。
+     * 百度 AIP Java SDK 的 asr() 成功返回结构为 {"err_no":0,"result":["识别文本"],...}，
+     * 文本位于 result 数组，不存在 text 字段；部分封装版本可能直接返回 text 字段，这里做兼容。
+     */
+    private String extractResultText(JSONObject json) {
+        if (json.has("result")) {
+            try {
+                org.json.JSONArray arr = json.getJSONArray("result");
+                StringBuilder sb = new StringBuilder();
+                for (int i = 0; i < arr.length(); i++) {
+                    sb.append(arr.getString(i));
+                }
+                return sb.toString().trim();
+            } catch (Exception ignored) {
+            }
+        }
+        return json.optString("text", "").trim();
     }
 
     /**
