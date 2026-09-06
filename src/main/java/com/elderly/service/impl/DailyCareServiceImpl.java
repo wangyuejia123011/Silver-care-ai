@@ -43,6 +43,56 @@ public class DailyCareServiceImpl implements DailyCareService {
 
     private static final String KEY_PREFIX = "today_care:";
 
+    /** 平稳时：按季节给出的贴切且多变的温馨提示池 */
+    private static final Map<String, List<String>> SEASON_STEADY = new LinkedHashMap<>();
+    /** 异常时：结合季节的提醒池 */
+    private static final Map<String, List<String>> SEASON_ABNORMAL = new LinkedHashMap<>();
+    /** 无健康记录时的随机提醒池 */
+    private static final List<String> NO_RECORD_TIPS = Arrays.asList(
+            "今天还未测量身体状况哦，抽空测个血压血糖吧",
+            "今天还没收到您的健康数据，有空测一下告诉我",
+            "今天尚未记录健康情况，记得测个血压血糖哦"
+    );
+
+    static {
+        SEASON_STEADY.put("春", Arrays.asList(
+                "春天气温多变，早晚记得添衣，出门散步别着凉",
+                "春天风大偏燥，多喝温水，过敏季少去花草密集处",
+                "春困易犯懒，午间小憩一会儿，饭后慢走助消化"
+        ));
+        SEASON_STEADY.put("夏", Arrays.asList(
+                "天气炎热，少量多次喝温水，避开正午暴晒",
+                "夏天出汗多，适当补盐补水，空调温度别太低",
+                "暑气重易心烦，饮食清淡些，午间小歇养精神"
+        ));
+        SEASON_STEADY.put("秋", Arrays.asList(
+                "秋燥明显，多吃润肺蔬果，嘴唇皮肤勤保湿",
+                "早晚转凉注意保暖，换季时节谨防感冒",
+                "秋高气爽适合慢走，但别运动过量累着身子"
+        ));
+        SEASON_STEADY.put("冬", Arrays.asList(
+                "天冷血管收缩，注意保暖，起床慢一点防头晕",
+                "寒冬干燥多喝热水，室内适当加湿更舒服",
+                "冷天少晨练，等太阳出来再出门，护好关节"
+        ));
+        SEASON_ABNORMAL.put("春", Arrays.asList(
+                "今天指标偏高，春寒料峭更要注意保暖休息",
+                "今天指标有点高，换季身体敏感，按时服药多休息"
+        ));
+        SEASON_ABNORMAL.put("夏", Arrays.asList(
+                "今天指标偏高，暑热易加重负担，请静心休息",
+                "今天指标有异常，炎热天少外出，按时服药"
+        ));
+        SEASON_ABNORMAL.put("秋", Arrays.asList(
+                "今天指标偏高，秋燥伤身，多喝温水按时服药",
+                "今天指标有异常，换季注意养护，及时休息"
+        ));
+        SEASON_ABNORMAL.put("冬", Arrays.asList(
+                "今天指标偏高，寒冬血管脆弱，务必保暖休息",
+                "今天指标有异常，冷天少动，按时服药多静养"
+        ));
+    }
+
     @Override
     public Map<String, Object> generate(ElderlyUser user, List<HealthRecord> todayHealth,
                                         List<HealthRecord> recentHealth, LocalDate today,
@@ -170,6 +220,7 @@ public class DailyCareServiceImpl implements DailyCareService {
             params.put("name", user.getName() == null ? "老人家" : user.getName());
             params.put("age", user.getAge() == null ? "" : user.getAge().toString());
             params.put("timeOfDay", timeOfDay);
+            params.put("season", season());
             params.put("data", dataSummary);
             params.put("medication", formatMeds(meds));
             String prompt = promptUtil.getPrompt("care_today.txt", params);
@@ -229,7 +280,7 @@ public class DailyCareServiceImpl implements DailyCareService {
         m.put("text", sb.toString());
         m.put("bullets", toBulletList(meds));
         m.put("medicationReminders", toMedList(meds));
-        m.put("weatherTip", "温馨提示：天气较热记得适量饮水，避免长时间户外活动。");
+        m.put("weatherTip", randomSeasonWeatherTip(today != null && !today.isEmpty(), anyHighRisk));
         m.put("medicationTip", buildMedicationTip(meds));
         m.put("source", "AI 关怀（基于今日健康数据 + 服药计划 + 档案）");
         return m;
@@ -241,7 +292,7 @@ public class DailyCareServiceImpl implements DailyCareService {
         m.put("text", n + "，今天请记得按时服药、适量饮水，保持好心情。" + tip);
         m.put("bullets", Arrays.asList("按时服药", "适量饮水", "不适及时联系家人"));
         m.put("medicationReminders", Collections.emptyList());
-        m.put("weatherTip", "温馨提示：今天也要照顾好自己哦。");
+        m.put("weatherTip", gentleSeasonTip());
         m.put("medicationTip", "按时服药，不漏服、不多服。");
         m.put("source", "银龄智护每日关怀");
         m.put("meta", Collections.emptyMap());
@@ -256,6 +307,39 @@ public class DailyCareServiceImpl implements DailyCareService {
         if (h < 13) return "中午";
         if (h < 18) return "下午";
         return "晚上";
+    }
+
+    /** 当前季节：春/夏/秋/冬（按月份判断，无真实天气数据时用季节作贴近建议） */
+    private String season() {
+        int m = LocalDate.now().getMonthValue();
+        if (m >= 3 && m <= 5) return "春";
+        if (m >= 6 && m <= 8) return "夏";
+        if (m >= 9 && m <= 11) return "秋";
+        return "冬";
+    }
+
+    /** 根据季节 + 健康情况，随机生成一句「温馨提示」；每次调用都可能不同 */
+    private String randomSeasonWeatherTip(boolean hasRecord, boolean anyHighRisk) {
+        String s = season();
+        if (hasRecord && anyHighRisk) {
+            return pick(SEASON_ABNORMAL.get(s), "今天健康指标有异常，请注意休息，按时服药");
+        }
+        if (!hasRecord) {
+            return pick(NO_RECORD_TIPS, "今天还未测量身体状况哦，及时测量哦");
+        }
+        return pick(SEASON_STEADY.get(s), "今天健康记录平稳哦，注意季节养护，保持好心情");
+    }
+
+    /** 通用温和的季节性温馨提示（兜底路径用） */
+    private String gentleSeasonTip() {
+        List<String> pool = SEASON_STEADY.get(season());
+        return pick(pool, "今天也要照顾好自己哦");
+    }
+
+    /** 从候选池中随机取一句，池为空或异常时返回兜底文本 */
+    private String pick(List<String> pool, String fallbackText) {
+        if (pool == null || pool.isEmpty()) return fallbackText;
+        return pool.get(java.util.concurrent.ThreadLocalRandom.current().nextInt(pool.size()));
     }
 
     /** 把服药计划格式化为可读串，例如 "1. 08:00 降压药(1片)；2. 21:00 安神药(1片)；" */

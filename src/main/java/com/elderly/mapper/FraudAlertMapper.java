@@ -20,4 +20,7 @@ public interface FraudAlertMapper {
 
     /** 查询未处理记录 */
     List<FraudAlert> selectUnhandled();
+
+    /** 根据用户ID清空反诈记录 */
+    int deleteByUserId(@Param("userId") Long userId);
 }

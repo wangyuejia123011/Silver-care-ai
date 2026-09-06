@@ -33,4 +33,7 @@ public interface CareOrderMapper {
     /** 指派工单给护工（状态置为assigned） */
     int assignCaregiver(@Param("id") Long id, @Param("caregiverId") Long caregiverId,
                         @Param("handlerName") String handlerName);
+
+    /** 根据用户ID清空工单 */
+    int deleteByUserId(@Param("userId") Long userId);
 }

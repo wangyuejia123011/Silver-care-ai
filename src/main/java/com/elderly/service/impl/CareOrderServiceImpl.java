@@ -119,4 +119,9 @@ public class CareOrderServiceImpl implements CareOrderService {
         }
         return rows > 0;
     }
+
+    @Override
+    public int clearByUserId(Long userId) {
+        return careOrderMapper.deleteByUserId(userId);
+    }
 }

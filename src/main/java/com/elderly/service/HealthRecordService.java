@@ -35,4 +35,7 @@ public interface HealthRecordService {
 
     /** 统计某时间段内高危记录数 */
     int countHighRisk(LocalDateTime start, LocalDateTime end);
+
+    /** 清空用户健康记录 */
+    int clearByUserId(Long userId);
 }

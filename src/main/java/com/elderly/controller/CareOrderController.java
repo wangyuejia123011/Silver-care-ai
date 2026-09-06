@@ -9,12 +9,14 @@ import com.elderly.service.CareOrderService;
 import com.elderly.service.CaregiverService;
 import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 /**
  * 护工工单接口 —— AI生成工单、查询、状态管理
  */
+@Slf4j
 @RestController
 @RequestMapping("/api/order")
 public class CareOrderController {
@@ -113,5 +115,19 @@ public class CareOrderController {
             created.setStatus("assigned");
         }
         return R.success("智能派单完成", created);
+    }
+
+    /**
+     * 清空用户工单
+     */
+    @DeleteMapping("/clear/{userId}")
+    public R<Void> clearByUserId(@PathVariable Long userId) {
+        try {
+            careOrderService.clearByUserId(userId);
+            return R.success("已清空");
+        } catch (Exception e) {
+            log.error("清空工单异常, userId={}: {}", userId, e.getMessage(), e);
+            return R.fail(500, "清空失败：" + e.getMessage());
+        }
     }
 }

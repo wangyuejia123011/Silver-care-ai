@@ -29,4 +29,7 @@ public interface CareOrderService {
 
     /** 指派护工（状态置为assigned，护工负载+1） */
     boolean assignCaregiver(Long orderId, Long caregiverId);
+
+    /** 清空用户工单 */
+    int clearByUserId(Long userId);
 }

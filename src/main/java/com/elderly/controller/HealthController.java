@@ -164,4 +164,18 @@ public class HealthController {
             return R.fail(500, "查询失败：" + e.getMessage());
         }
     }
+
+    /**
+     * 清空用户健康记录
+     */
+    @DeleteMapping("/clear/{userId}")
+    public R<Void> clearByUserId(@PathVariable Long userId) {
+        try {
+            healthRecordService.clearByUserId(userId);
+            return R.success("已清空");
+        } catch (Exception e) {
+            log.error("清空健康记录异常, userId={}: {}", userId, e.getMessage(), e);
+            return R.fail(500, "清空失败：" + e.getMessage());
+        }
+    }
 }

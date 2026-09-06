@@ -37,4 +37,7 @@ public interface HealthRecordMapper {
 
     /** 查询某时间段内的所有记录 */
     List<HealthRecord> selectByTimeRange(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+    /** 根据用户ID清空健康记录 */
+    int deleteByUserId(@Param("userId") Long userId);
 }

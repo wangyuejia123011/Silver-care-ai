@@ -34,4 +34,9 @@ public class FraudAlertServiceImpl implements FraudAlertService {
     public List<FraudAlert> listUnhandled() {
         return fraudAlertMapper.selectUnhandled();
     }
+
+    @Override
+    public int clearByUserId(Long userId) {
+        return fraudAlertMapper.deleteByUserId(userId);
+    }
 }

@@ -74,12 +74,17 @@ public class VoiceAgent {
             return result;
         }
         String rawText = (String) asrResult.getOrDefault("text", "");
+        // 百度新版 AIP SDK 不返回 score 字段，hasScore=false 表示置信度未知，
+        // 此时不应触发大模型清洗（否则会破坏百度本身已准确的识别结果）
+        boolean hasScore = asrResult.containsKey("score");
         double score = 0;
-        try {
-            score = Double.parseDouble(asrResult.getOrDefault("score", "0").toString());
-        } catch (Exception ignored) {
+        if (hasScore) {
+            try {
+                score = Double.parseDouble(asrResult.get("score").toString());
+            } catch (Exception ignored) {
+            }
         }
-        result.put("score", score);
+        result.put("score", hasScore ? score : -1);
         result.put("rawText", rawText);
 
         if (rawText == null || rawText.isBlank()) {
@@ -91,10 +96,13 @@ public class VoiceAgent {
             return result;
         }
 
-        // 置信度低：大模型清洗方言口语
-        if (score < 0.8) {
+        // 仅在百度明确给出低置信度分数时才做最小纠错，且要求不改变原意、不增减内容，
+        // 避免对高准确识别结果做无谓的大模型改写（这是此前"识别不准确"的主因）
+        if (hasScore && score < 0.6) {
             try {
-                String clean = llmUtil.chatSync("只输出整理通顺的标准中文，不要任何多余描述：" + rawText);
+                String clean = llmUtil.chatSync(
+                        "在不改变原意、不增减内容的前提下，仅修正明显错别字或语法错误，保留口语化表达："
+                                + rawText);
                 clean = (clean == null ? "" : clean).trim();
                 result.put("text", clean.isBlank() ? rawText : clean);
                 return result;
@@ -119,22 +127,26 @@ public class VoiceAgent {
                 return Flux.just(sse("error", "语音识别失败，请重试或改用文字输入。"));
             }
             String rawText = (String) asrResult.getOrDefault("text", "");
+            boolean hasScore = asrResult.containsKey("score");
             double score = 0;
-            try {
-                score = Double.parseDouble(asrResult.getOrDefault("score", "0").toString());
-            } catch (Exception ignored) {
+            if (hasScore) {
+                try {
+                    score = Double.parseDouble(asrResult.get("score").toString());
+                } catch (Exception ignored) {
+                }
             }
 
             if (rawText == null || rawText.isBlank()) {
                 return Flux.just(sse("error", "没有听清您说的话，请靠近一点再说一遍。"));
             }
 
-            // 2. 置信度低：大模型清洗方言口语
+            // 2. 仅低置信度时做最小纠错（同上，避免无谓改写）
             String cleanText = rawText;
-            if (score < 0.8) {
+            if (hasScore && score < 0.6) {
                 try {
-                    cleanText = llmUtil.chatSync("只输出整理通顺的标准中文，不要任何多余描述："
-                            + rawText);
+                    cleanText = llmUtil.chatSync(
+                            "在不改变原意、不增减内容的前提下，仅修正明显错别字或语法错误，保留口语化表达："
+                                    + rawText);
                     cleanText = (cleanText == null ? "" : cleanText).trim();
                     if (cleanText.isBlank()) cleanText = rawText;
                 } catch (Exception e) {

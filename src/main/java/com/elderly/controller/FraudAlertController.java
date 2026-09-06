@@ -53,4 +53,18 @@ public class FraudAlertController {
             return R.fail(500, msg != null ? msg : "查询未处理反诈记录失败");
         }
     }
+
+    /**
+     * 清空用户反诈记录
+     */
+    @DeleteMapping("/clear/{userId}")
+    public R<Void> clearByUserId(@PathVariable Long userId) {
+        try {
+            fraudAlertService.clearByUserId(userId);
+            return R.success("已清空");
+        } catch (Exception e) {
+            log.warn("清空反诈记录失败, userId={}", userId, e);
+            return R.fail(500, "清空失败：" + e.getMessage());
+        }
+    }
 }

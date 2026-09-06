@@ -85,8 +85,9 @@ public class BaiduSpeechUtil {
     /**
      * 多方言 ASR 识别。
      * <p>
-     * dev_pid 方言映射：
-     * 1537 普通话 | 1737 四川话 | 1637 粤语 | 1837 河南话
+     * dev_pid 方言模型映射（百度官方标准）：
+     * 1537 普通话(输入法模型,带标点) | 1637 粤语 | 1837 四川话 | 1737 英语
+     * 河南话百度无独立方言模型，回退到普通话模型(1537)识别效果最佳
      *
      * @param audioBytes PCM 音频数据（16kHz 单声道）
      * @param dialect    方言类型：common/sichuan/cantonese/henan
@@ -112,11 +113,13 @@ public class BaiduSpeechUtil {
         }
 
         HashMap<String, Object> options = new HashMap<>();
+        // 百度 dev_pid 标准方言模型：1537=普通话 1637=粤语 1837=四川话 1737=英语
+        // 河南话百度无专用模型，用普通话模型(1537)兜底，识别效果优于误配四川话模型
         String devPid = switch (dialect) {
-            case "sichuan" -> "1737";
-            case "cantonese" -> "1637";
-            case "henan" -> "1837";
-            default -> "1537";
+            case "sichuan" -> "1837";      // 四川话
+            case "cantonese" -> "1637";    // 粤语
+            case "henan" -> "1537";        // 河南话：无专用模型，回退普通话
+            default -> "1537";             // 普通话
         };
         options.put("dev_pid", devPid);
 
@@ -139,10 +142,15 @@ public class BaiduSpeechUtil {
             if (!recognized.isEmpty()) {
                 result.put("text", recognized);
             }
-            log.info("百度ASR识别成功: dialect={}, text={}, score={}",
+            // 仅在百度明确返回置信度分数时才透传 score；新版 AIP SDK 不返回该字段，
+            // 此时上层应直接使用原始识别文本，避免无效的大模型清洗
+            if (jsonResult.has("score")) {
+                result.put("score", jsonResult.optDouble("score", 0));
+            }
+            log.info("百度ASR识别成功: dialect={}, text={}, hasScore={}",
                     dialect,
                     recognized.length() > 50 ? recognized.substring(0, 50) + "…" : recognized,
-                    jsonResult.optDouble("score", 0));
+                    jsonResult.has("score"));
             return result;
 
         } catch (Exception e) {

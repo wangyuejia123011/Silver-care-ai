@@ -85,4 +85,8 @@
         ORDER BY record_time DESC
     </select>
 
+    <delete id="deleteByUserId">
+        DELETE FROM health_record WHERE user_id = #{userId}
+    </delete>
+
 </mapper>

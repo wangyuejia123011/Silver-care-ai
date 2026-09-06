@@ -17,4 +17,7 @@ public interface FraudAlertService {
 
     /** 查询未处理记录 */
     List<FraudAlert> listUnhandled();
+
+    /** 清空用户反诈记录 */
+    int clearByUserId(Long userId);
 }
