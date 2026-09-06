@@ -135,4 +135,9 @@ public class HealthRecordServiceImpl implements HealthRecordService {
     public int clearByUserId(Long userId) {
         return healthRecordMapper.deleteByUserId(userId);
     }
+
+    @Override
+    public int updateAiAdviceById(Long id, String aiAdvice) {
+        return healthRecordMapper.updateAiAdviceById(id, aiAdvice);
+    }
 }

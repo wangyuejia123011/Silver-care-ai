@@ -38,4 +38,7 @@ public interface HealthRecordService {
 
     /** 清空用户健康记录 */
     int clearByUserId(Long userId);
+
+    /** 根据ID更新AI建议（流式回复完成后补录） */
+    int updateAiAdviceById(Long id, String aiAdvice);
 }

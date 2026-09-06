@@ -40,4 +40,7 @@ public interface HealthRecordMapper {
 
     /** 根据用户ID清空健康记录 */
     int deleteByUserId(@Param("userId") Long userId);
+
+    /** 根据ID更新AI建议（流式回复完成后补录） */
+    int updateAiAdviceById(@Param("id") Long id, @Param("aiAdvice") String aiAdvice);
 }

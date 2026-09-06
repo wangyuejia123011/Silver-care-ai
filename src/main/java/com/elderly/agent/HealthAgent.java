@@ -69,11 +69,13 @@ public class HealthAgent {
     private HealthNotifyService healthNotifyService;
 
     private static final Pattern PRESSURE_PATTERN = Pattern.compile("(\\d{2,3})\\s*[／/过到]\\s*(\\d{2,3})");
+    // 兼容多种口语：血压/高压/低压，可带"是""为""值""：""："等间隔
+    private static final Pattern SYS_ONLY_PATTERN = Pattern.compile("(?:血压|高压)[^\\d]{0,8}(\\d{2,3})");
     private static final Pattern SYS_PATTERN = Pattern.compile("高压[^\\d]{0,4}(\\d{2,3})");
-    private static final Pattern DIA_PATTERN = Pattern.compile("低压[^\\d]{0,4}(\\d{2,3})");
-    private static final Pattern SUGAR_PATTERN = Pattern.compile("血糖[^\\d]{0,6}(\\d+\\.?\\d*)");
-    private static final Pattern HEART_PATTERN = Pattern.compile("(?:心率|心跳|脉搏)[^\\d]{0,6}(\\d{2,3})");
-    private static final Pattern TEMP_PATTERN = Pattern.compile("(?:体温|发烧|发热)[^\\d]{0,6}(\\d{2}\\.?\\d*)");
+    private static final Pattern DIA_PATTERN = Pattern.compile("低压[^\\d]{0,8}(\\d{2,3})");
+    private static final Pattern SUGAR_PATTERN = Pattern.compile("(?:血糖|空腹|餐后|餐前)[^\\d]{0,8}(\\d+\\.?\\d*)");
+    private static final Pattern HEART_PATTERN = Pattern.compile("(?:心率|心跳|脉搏|心律)[^\\d]{0,8}(\\d{2,3})");
+    private static final Pattern TEMP_PATTERN = Pattern.compile("(?:体温|发烧|发热|温度)[^\\d]{0,8}(\\d{1,2}\\.?\\d*)");
 
     public AgentResult analyseHealth(String userText, Long userId) {
         // ===== 1. 大模型理解意图 + 正则提取指标 =====
@@ -172,7 +174,7 @@ public class HealthAgent {
             return result;
         }
 
-        // ===== 7. 中/低危：流式生成适老化回答，完成后落库 =====
+        // ===== 7. 中/低危：先同步落库指标，再流式生成回答并补录AI建议 =====
         final Integer fSystolic = systolic, fDiastolic = diastolic, fHeartRate = heartRate;
         final Double fBloodSugar = bloodSugar, fTemperature = temperature;
         final String fRisk = riskLevel;
@@ -181,18 +183,30 @@ public class HealthAgent {
         AgentResult result = AgentResult.of("health", Flux.empty());
         result.setRiskLevel(riskLevel);
 
+        // 先同步落库：指标立刻可见，避免SSE完成后前端刷新仍取不到数据
+        Long recordId = null;
+        try {
+            HealthRecord record = buildRecord(userId, fProfile, fSystolic, fDiastolic, fHeartRate,
+                    fBloodSugar, fTemperature, "voice", userText, fRisk);
+            record.setAiAdvice(""); // 占位，流式完成后再更新
+            persistAndNotify(record, userText);
+            attachNotifySummary(result, record, userText);
+            recordId = record.getId();
+        } catch (Exception e) {
+            log.warn("健康记录同步落库失败: {}", e.getMessage());
+        }
+
+        final Long finalRecordId = recordId;
         StringBuilder replyBuffer = new StringBuilder();
         Flux<String> stream = llmUtil.streamChat(fullPrompt)
                 .doOnNext(replyBuffer::append)
                 .concatWith(Flux.defer(() -> {
                     try {
-                        HealthRecord record = buildRecord(userId, fProfile, fSystolic, fDiastolic, fHeartRate,
-                                fBloodSugar, fTemperature, "voice", userText, fRisk);
-                        record.setAiAdvice(replyBuffer.toString());
-                        persistAndNotify(record, userText);
-                        attachNotifySummary(result, record, userText);
+                        if (finalRecordId != null) {
+                            healthRecordService.updateAiAdviceById(finalRecordId, replyBuffer.toString());
+                        }
                     } catch (Exception e) {
-                        log.warn("健康记录落库失败: {}", e.getMessage());
+                        log.warn("AI建议更新失败, recordId={}: {}", finalRecordId, e.getMessage());
                     }
                     return Flux.empty();
                 }));
@@ -211,6 +225,10 @@ public class HealthAgent {
         if (intent.systolic == null) {
             Matcher sys = SYS_PATTERN.matcher(userText);
             if (sys.find()) intent.systolic = Integer.parseInt(sys.group(1));
+        }
+        if (intent.systolic == null) {
+            Matcher sysOnly = SYS_ONLY_PATTERN.matcher(userText);
+            if (sysOnly.find()) intent.systolic = Integer.parseInt(sysOnly.group(1));
         }
         if (intent.diastolic == null) {
             Matcher dia = DIA_PATTERN.matcher(userText);
