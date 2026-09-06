@@ -43,4 +43,8 @@
         FROM daily_report ORDER BY report_date DESC LIMIT #{days}
     </select>
 
+    <delete id="deleteAll">
+        DELETE FROM daily_report
+    </delete>
+
 </mapper>

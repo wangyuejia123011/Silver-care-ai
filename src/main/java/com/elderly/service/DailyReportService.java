@@ -17,4 +17,7 @@ public interface DailyReportService {
 
     /** 数据看板：今日统计 + 最近日报 + 护工排行 */
     java.util.Map<String, Object> buildDashboard();
+
+    /** 清空所有日报 */
+    int clearAll();
 }

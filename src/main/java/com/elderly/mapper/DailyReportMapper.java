@@ -20,4 +20,7 @@ public interface DailyReportMapper {
 
     /** 查询最近N天日报 */
     List<DailyReport> selectRecent(@Param("days") int days);
+
+    /** 清空所有日报 */
+    int deleteAll();
 }

@@ -59,4 +59,17 @@ public class DailyReportController {
     public R<java.util.Map<String, Object>> dashboard() {
         return R.success(dailyReportService.buildDashboard());
     }
+
+    /**
+     * 清空所有日报
+     */
+    @DeleteMapping("/clear")
+    public R<String> clear() {
+        try {
+            int rows = dailyReportService.clearAll();
+            return R.success("已清空 " + rows + " 条日报记录");
+        } catch (Exception e) {
+            return R.fail(500, "清空日报失败：" + e.getMessage());
+        }
+    }
 }

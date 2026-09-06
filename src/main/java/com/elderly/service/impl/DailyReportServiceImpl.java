@@ -159,6 +159,16 @@ public class DailyReportServiceImpl implements DailyReportService {
     }
 
     @Override
+    public int clearAll() {
+        try {
+            return dailyReportMapper.deleteAll();
+        } catch (Exception e) {
+            log.warn("清空日报失败: {}", e.getMessage());
+            throw new RuntimeException("清空日报失败：" + e.getMessage(), e);
+        }
+    }
+
+    @Override
     public java.util.Map<String, Object> buildDashboard() {
         LocalDate today = LocalDate.now();
         LocalDateTime start = today.atStartOfDay();
