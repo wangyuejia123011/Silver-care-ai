@@ -85,9 +85,12 @@ public class BaiduSpeechUtil {
     /**
      * 多方言 ASR 识别。
      * <p>
-     * dev_pid 方言模型映射（百度官方标准）：
-     * 1537 普通话(输入法模型,带标点) | 1637 粤语 | 1837 四川话 | 1737 英语
+     * dev_pid 方言模型映射（百度官方标准，必须为 int 类型）：
+     * 1537 普通话(输入法模型) | 1637 粤语 | 1837 四川话 | 1737 英语
      * 河南话百度无独立方言模型，回退到普通话模型(1537)识别效果最佳
+     * <p>
+     * 容错：当方言模式识别失败（多为方言模型未开通）时，自动用普通话模型兜底重试一次，
+     * 保证功能不中断，并在日志中提示真实原因。
      *
      * @param audioBytes PCM 音频数据（16kHz 单声道）
      * @param dialect    方言类型：common/sichuan/cantonese/henan
@@ -112,22 +115,37 @@ public class BaiduSpeechUtil {
             return failResult;
         }
 
-        HashMap<String, Object> options = new HashMap<>();
-        // 百度 dev_pid 标准方言模型：1537=普通话 1637=粤语 1837=四川话 1737=英语
-        // 河南话百度无专用模型，用普通话模型(1537)兜底，识别效果优于误配四川话模型
-        String devPid = switch (dialect) {
-            case "sichuan" -> "1837";      // 四川话
-            case "cantonese" -> "1637";    // 粤语
-            case "henan" -> "1537";        // 河南话：无专用模型，回退普通话
-            default -> "1537";             // 普通话
+        // 百度 dev_pid 必须为 Integer 类型（官方示例用 int，传 String 会被 SDK 忽略导致方言不生效）
+        int commonPid = 1537;
+        int targetPid = switch (dialect) {
+            case "sichuan" -> 1837;      // 四川话
+            case "cantonese" -> 1637;    // 粤语
+            case "henan" -> 1537;        // 河南话：无专用模型，回退普通话
+            default -> 1537;             // 普通话
         };
-        options.put("dev_pid", devPid);
+        String label = dialectLabel(dialect);
+        // 非普通话时记录目标方言模型，便于排查是否生效
+        if (!"common".equals(dialect)) {
+            log.info("百度ASR方言识别: 请求 dialect={}, dev_pid={} ({})", dialect, targetPid, label);
+        }
 
         try {
+            HashMap<String, Object> options = new HashMap<>();
+            options.put("dev_pid", targetPid);
             JSONObject jsonResult = client.asr(audioBytes, "pcm", 16000, options);
 
-            // 检查百度返回的错误码（0 = 成功）
             int errNo = jsonResult.optInt("err_no", -999);
+            // 方言模型失败时（多为未开通），用普通话模型兜底重试一次
+            if (errNo != 0 && !"common".equals(dialect)) {
+                String firstErr = jsonResult.optString("err_msg", "未知错误");
+                log.warn("百度ASR方言模型({}/{})失败 err_no={} ({})，改用普通话模型兜底",
+                        dialect, targetPid, errNo, firstErr);
+                options.put("dev_pid", commonPid);
+                jsonResult = client.asr(audioBytes, "pcm", 16000, options);
+                errNo = jsonResult.optInt("err_no", -999);
+            }
+
+            // 检查百度返回的错误码（0 = 成功）
             if (errNo != 0) {
                 String errMsg = jsonResult.optString("err_msg", "未知错误");
                 log.error("百度ASR识别失败: err_no={}, err_msg={}", errNo, errMsg);
@@ -159,6 +177,16 @@ public class BaiduSpeechUtil {
             failResult.put("err_msg", "ASR调用异常: " + e.getMessage());
             return failResult;
         }
+    }
+
+    /** 方言中文标签，仅用于日志 */
+    private String dialectLabel(String dialect) {
+        return switch (dialect) {
+            case "sichuan" -> "四川话";
+            case "cantonese" -> "粤语";
+            case "henan" -> "河南话";
+            default -> "普通话";
+        };
     }
 
     /**
