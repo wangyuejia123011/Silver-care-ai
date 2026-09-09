@@ -96,6 +96,7 @@ public class VoiceAgent {
             return result;
         }
 
+        String finalText = rawText;
         // 仅在百度明确给出低置信度分数时才做最小纠错，且要求不改变原意、不增减内容，
         // 避免对高准确识别结果做无谓的大模型改写（这是此前"识别不准确"的主因）
         if (hasScore && score < 0.6) {
@@ -104,12 +105,13 @@ public class VoiceAgent {
                         "在不改变原意、不增减内容的前提下，仅修正明显错别字或语法错误，保留口语化表达："
                                 + rawText);
                 clean = (clean == null ? "" : clean).trim();
-                result.put("text", clean.isBlank() ? rawText : clean);
-                return result;
+                finalText = clean.isBlank() ? rawText : clean;
             } catch (Exception ignored) {
             }
         }
-        result.put("text", rawText);
+        // 方言"是/十"同音消歧：四川话等口音中极易混淆，需在进入意图分类前修正
+        finalText = fixShiShi(finalText);
+        result.put("text", finalText);
         return result;
     }
 
@@ -153,6 +155,8 @@ public class VoiceAgent {
                     cleanText = rawText;
                 }
             }
+            // 2.5 方言"是/十"同音消歧（四川话等口音中极易混淆）
+            cleanText = fixShiShi(cleanText);
 
             // 3. 推送识别结果 + 意图路由流
             return Flux.concat(
@@ -270,6 +274,45 @@ public class VoiceAgent {
             log.warn("意图分类异常，按闲聊处理: {}", e.getMessage());
             return "闲聊";
         }
+    }
+
+    /**
+     * 方言"是/十"同音消歧：方言（尤其四川话）口音中"是"(shì)与"十"(shí)极易被ASR混淆。
+     * 先以规则修补最稳妥的数字相邻情形，再对含"是"的文本做一次大模型上下文消歧。
+     */
+    private String fixShiShi(String text) {
+        if (text == null || text.isBlank()) return text;
+        String fixed = ruleFixShiShi(text);
+        // 仅当文本中仍含"是"时才调用大模型消歧（"十"误识别大多也会以"是"形式出现，故覆盖双向）
+        if (fixed.contains("是")) {
+            try {
+                String prompt = "你是语音识别纠错助手。下面是一段方言语音识别出的文本，"
+                        + "方言里\"是\"(shì)和\"十\"(shí)因口音极易混淆。"
+                        + "请仅依据上下文判断并修正二者的混淆："
+                        + "数值、数量、年龄、时间、血压/血糖等度量处应为\"十\"（如十六、十点、十岁、十块）；"
+                        + "判断词、系词、肯定回答处应为\"是\"（如我是、也是、还是）。"
+                        + "其余文字、标点、口语化表达一律不要改动，也不要增删内容。"
+                        + "只输出修正后的文本，不要任何解释或补充。\n原文："
+                        + fixed;
+                String corrected = llmUtil.chatSync(prompt);
+                corrected = (corrected == null ? "" : corrected).trim();
+                if (!corrected.isBlank() && !corrected.equals(fixed)
+                        && Math.abs(corrected.length() - fixed.length()) <= 2) {
+                    log.info("是/十 消歧修正: [{}] -> [{}]", fixed, corrected);
+                    return corrected;
+                }
+            } catch (Exception e) {
+                log.warn("是/十 消歧LLM调用失败，沿用规则结果: {}", e.getMessage());
+            }
+        }
+        return fixed;
+    }
+
+    /** 规则层"是/十"修补：仅处理两侧均为数字/量词的稳妥情形，避免误伤系词"是" */
+    private String ruleFixShiShi(String text) {
+        return text.replaceAll(
+                "(?<!第)([0-9零一二三四五六七八九两十百千万])是([0-9零一二三四五六七八九两点几多来号岁块元分斤个倍千两])",
+                "$1十$2");
     }
 
     /** 文字生成完成后TTS音频（供语音播报） */
