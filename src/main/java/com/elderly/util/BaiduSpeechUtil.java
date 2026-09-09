@@ -9,6 +9,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.net.URI;
+import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -41,11 +48,15 @@ public class BaiduSpeechUtil {
     @Value("${baidu.secretKey:}")
     private String secretKey;
 
-    /** 复用的 AipSpeech 客户端实例 */
+    /** 复用的 AipSpeech 客户端实例（TTS 使用） */
     private AipSpeech client;
 
     /** 是否已配置可用 */
     private volatile boolean configured = false;
+
+    /** 百度 access_token（REST API 直连 ASR 用，带缓存） */
+    private volatile String accessToken;
+    private volatile long tokenExpireTime = 0;
 
     /**
      * 启动时初始化百度语音客户端。
@@ -115,7 +126,6 @@ public class BaiduSpeechUtil {
             return failResult;
         }
 
-        // 百度 dev_pid 必须为 Integer 类型（官方示例用 int，传 String 会被 SDK 忽略导致方言不生效）
         int commonPid = 1537;
         int targetPid = switch (dialect) {
             case "sichuan" -> 1837;      // 四川话
@@ -124,28 +134,26 @@ public class BaiduSpeechUtil {
             default -> 1537;             // 普通话
         };
         String label = dialectLabel(dialect);
-        // 非普通话时记录目标方言模型，便于排查是否生效
-        if (!"common".equals(dialect)) {
-            log.info("百度ASR方言识别: 请求 dialect={}, dev_pid={} ({})", dialect, targetPid, label);
-        }
 
+        // 优先直连百度短语音识别 REST API（自己透传 dev_pid，确保方言模型真正生效，
+        // 不受 AIP SDK 封装对 dev_pid 的潜在忽略影响）
         try {
-            HashMap<String, Object> options = new HashMap<>();
-            options.put("dev_pid", targetPid);
-            JSONObject jsonResult = client.asr(audioBytes, "pcm", 16000, options);
-
+            if (!"common".equals(dialect)) {
+                log.info("百度ASR方言识别[直连]: dialect={}, dev_pid={} ({}), audioLen={}",
+                        dialect, targetPid, label, audioBytes.length);
+            }
+            JSONObject jsonResult = asrByRestApi(audioBytes, targetPid);
             int errNo = jsonResult.optInt("err_no", -999);
-            // 方言模型失败时（多为未开通），用普通话模型兜底重试一次
+
+            // 方言模型失败时（多为方言模型未开通或音频不匹配），用普通话模型兜底重试一次
             if (errNo != 0 && !"common".equals(dialect)) {
                 String firstErr = jsonResult.optString("err_msg", "未知错误");
-                log.warn("百度ASR方言模型({}/{})失败 err_no={} ({})，改用普通话模型兜底",
+                log.warn("百度ASR方言模型({}/{})直连失败 err_no={} ({})，改用普通话模型兜底",
                         dialect, targetPid, errNo, firstErr);
-                options.put("dev_pid", commonPid);
-                jsonResult = client.asr(audioBytes, "pcm", 16000, options);
+                jsonResult = asrByRestApi(audioBytes, commonPid);
                 errNo = jsonResult.optInt("err_no", -999);
             }
 
-            // 检查百度返回的错误码（0 = 成功）
             if (errNo != 0) {
                 String errMsg = jsonResult.optString("err_msg", "未知错误");
                 log.error("百度ASR识别失败: err_no={}, err_msg={}", errNo, errMsg);
@@ -154,29 +162,111 @@ public class BaiduSpeechUtil {
                 return failResult;
             }
 
-            HashMap<String, Object> result = new HashMap<>(jsonResult.toMap());
-            // 百度 AIP 返回文本在 result 数组（无 text 字段），统一提取到 text 供上层使用
-            String recognized = extractResultText(jsonResult);
-            if (!recognized.isEmpty()) {
-                result.put("text", recognized);
-            }
-            // 仅在百度明确返回置信度分数时才透传 score；新版 AIP SDK 不返回该字段，
-            // 此时上层应直接使用原始识别文本，避免无效的大模型清洗
-            if (jsonResult.has("score")) {
-                result.put("score", jsonResult.optDouble("score", 0));
-            }
-            log.info("百度ASR识别成功: dialect={}, text={}, hasScore={}",
-                    dialect,
-                    recognized.length() > 50 ? recognized.substring(0, 50) + "…" : recognized,
-                    jsonResult.has("score"));
-            return result;
+            return parseAsrResult(jsonResult, dialect);
 
         } catch (Exception e) {
-            log.error("百度ASR调用异常: {}", e.getMessage(), e);
-            failResult.put("err_no", -3);
-            failResult.put("err_msg", "ASR调用异常: " + e.getMessage());
-            return failResult;
+            // REST 直连异常时回退到 AIP SDK 的 asr 方法作为最后兜底
+            log.warn("百度ASR REST直连异常({})，回退SDK", e.getMessage());
+            try {
+                HashMap<String, Object> options = new HashMap<>();
+                options.put("dev_pid", targetPid);
+                JSONObject sdkResult = client.asr(audioBytes, "pcm", 16000, options);
+                int errNo = sdkResult.optInt("err_no", -999);
+                if (errNo != 0) {
+                    failResult.put("err_no", errNo);
+                    failResult.put("err_msg", sdkResult.optString("err_msg", "未知错误"));
+                    return failResult;
+                }
+                return parseAsrResult(sdkResult, dialect);
+            } catch (Exception e2) {
+                log.error("百度ASR调用异常: {}", e2.getMessage(), e2);
+                failResult.put("err_no", -3);
+                failResult.put("err_msg", "ASR调用异常: " + e2.getMessage());
+                return failResult;
+            }
         }
+    }
+
+    /**
+     * 直连百度短语音识别 REST API（server_api），自己透传 dev_pid，确保方言模型生效。
+     */
+    private JSONObject asrByRestApi(byte[] audio, int devPid) throws Exception {
+        String token = getAccessToken();
+        if (token == null) {
+            JSONObject fail = new JSONObject();
+            fail.put("err_no", -10);
+            fail.put("err_msg", "获取百度access_token失败");
+            return fail;
+        }
+        String base64Audio = Base64.getEncoder().encodeToString(audio);
+        JSONObject body = new JSONObject();
+        body.put("format", "pcm");
+        body.put("rate", 16000);
+        body.put("channel", 1);
+        body.put("cuid", "silver-care-ai");
+        body.put("token", token);
+        body.put("dev_pid", devPid);
+        body.put("speech", base64Audio);
+        body.put("len", audio.length);
+
+        HttpClient http = HttpClient.newBuilder()
+                .connectTimeout(java.time.Duration.ofSeconds(5))
+                .build();
+        HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create("https://vop.baidu.com/server_api"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body.toString(), StandardCharsets.UTF_8))
+                .build();
+        HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+        return new JSONObject(resp.body());
+    }
+
+    /**
+     * 获取百度 access_token（带缓存，有效期约30天，缓存25天）。
+     */
+    private String getAccessToken() throws Exception {
+        long now = System.currentTimeMillis();
+        if (accessToken != null && now < tokenExpireTime) {
+            return accessToken;
+        }
+        String url = "https://aip.baidubce.com/oauth/2.0/token?grant_type=client_credentials"
+                + "&client_id=" + URLEncoder.encode(apiKey, StandardCharsets.UTF_8)
+                + "&client_secret=" + URLEncoder.encode(secretKey, StandardCharsets.UTF_8);
+        HttpClient http = HttpClient.newBuilder()
+                .connectTimeout(java.time.Duration.ofSeconds(5))
+                .build();
+        HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .GET()
+                .build();
+        HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+        JSONObject json = new JSONObject(resp.body());
+        String token = json.optString("access_token", "");
+        if (token.isEmpty()) {
+            log.error("获取百度access_token失败: {}", resp.body());
+            return null;
+        }
+        accessToken = token;
+        tokenExpireTime = now + 25L * 24 * 60 * 60 * 1000; // 缓存25天
+        log.info("百度access_token获取成功（已缓存25天）");
+        return accessToken;
+    }
+
+    /** 统一解析百度ASR返回（兼容直连与SDK两种结构），提取文本与 score */
+    private HashMap<String, Object> parseAsrResult(JSONObject jsonResult, String dialect) {
+        HashMap<String, Object> result = new HashMap<>(jsonResult.toMap());
+        String recognized = extractResultText(jsonResult);
+        if (!recognized.isEmpty()) {
+            result.put("text", recognized);
+        }
+        if (jsonResult.has("score")) {
+            result.put("score", jsonResult.optDouble("score", 0));
+        }
+        log.info("百度ASR识别成功: dialect={}, text={}, hasScore={}",
+                dialect,
+                recognized.length() > 50 ? recognized.substring(0, 50) + "…" : recognized,
+                jsonResult.has("score"));
+        return result;
     }
 
     /** 方言中文标签，仅用于日志 */
