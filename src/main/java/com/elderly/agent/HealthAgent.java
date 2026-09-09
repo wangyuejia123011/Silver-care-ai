@@ -68,14 +68,39 @@ public class HealthAgent {
     @Resource
     private HealthNotifyService healthNotifyService;
 
-    private static final Pattern PRESSURE_PATTERN = Pattern.compile("(\\d{2,3})\\s*[／/过到]\\s*(\\d{2,3})");
-    // 兼容多种口语：血压/高压/低压，可带"是""为""值""：""："等间隔
-    private static final Pattern SYS_ONLY_PATTERN = Pattern.compile("(?:血压|高压)[^\\d]{0,8}(\\d{2,3})");
-    private static final Pattern SYS_PATTERN = Pattern.compile("高压[^\\d]{0,4}(\\d{2,3})");
-    private static final Pattern DIA_PATTERN = Pattern.compile("低压[^\\d]{0,8}(\\d{2,3})");
-    private static final Pattern SUGAR_PATTERN = Pattern.compile("(?:血糖|空腹|餐后|餐前)[^\\d]{0,8}(\\d+\\.?\\d*)");
-    private static final Pattern HEART_PATTERN = Pattern.compile("(?:心率|心跳|脉搏|心律)[^\\d]{0,8}(\\d{2,3})");
-    private static final Pattern TEMP_PATTERN = Pattern.compile("(?:体温|发烧|发热|温度)[^\\d]{0,8}(\\d{1,2}\\.?\\d*)");
+    // 数字 token：阿拉伯数字 或 中文数字（含小数），例如 120 / 七十 / 十六点五 / 一百二
+    private static final String NUM_TOKEN =
+            "(\\d+(?:\\.\\d+)?|[零一二两三四五六七八九十百]+(?:[点\\.][0-9零一二两三四五六七八九十]+)?)";
+    private static final Pattern PRESSURE_PATTERN =
+            Pattern.compile("(\\d{2,3})\\s*[／/过到]\\s*(\\d{2,3})");
+    // 兼容多种口语：血压/高压/低压，关键词与数字之间可带"是""为""值""："等间隔
+    private static final Pattern SYS_ONLY_PATTERN =
+            Pattern.compile("(?:血压|高压)[^0-9零一二两三四五六七八九十百]{0,5}" + NUM_TOKEN);
+    private static final Pattern DIA_ONLY_PATTERN =
+            Pattern.compile("(?:低压|舒张压)[^0-9零一二两三四五六七八九十百]{0,5}" + NUM_TOKEN);
+    private static final Pattern SUGAR_PATTERN =
+            Pattern.compile("(?:血糖|空腹血糖|餐后血糖|餐前血糖)[^0-9零一二两三四五六七八九十百]{0,5}" + NUM_TOKEN);
+    private static final Pattern HEART_PATTERN =
+            Pattern.compile("(?:心率|心跳|脉搏|心律)[^0-9零一二两三四五六七八九十百]{0,5}" + NUM_TOKEN);
+    private static final Pattern TEMP_PATTERN =
+            Pattern.compile("(?:体温|发烧|发热|温度)[^0-9零一二两三四五六七八九十百]{0,5}" + NUM_TOKEN);
+
+    // 中文数字映射（覆盖老人口语常用）
+    private static int cnDigit(char c) {
+        switch (c) {
+            case '零': return 0;
+            case '一': return 1;
+            case '二': case '两': return 2;
+            case '三': return 3;
+            case '四': return 4;
+            case '五': return 5;
+            case '六': return 6;
+            case '七': return 7;
+            case '八': return 8;
+            case '九': return 9;
+            default: return -1;
+        }
+    }
 
     public AgentResult analyseHealth(String userText, Long userId) {
         // ===== 1. 大模型理解意图 + 正则提取指标 =====
@@ -214,39 +239,115 @@ public class HealthAgent {
         return result;
     }
 
-    /** 从文本中提取健康指标 */
+    /** 从文本中提取健康指标（支持阿拉伯数字与中文数字：七十/十六点五/一百二） */
     private HealthIntent extractIntentAndMetrics(String userText) {
         HealthIntent intent = new HealthIntent();
         Matcher pressMatch = PRESSURE_PATTERN.matcher(userText);
         if (pressMatch.find()) {
-            intent.systolic = Integer.parseInt(pressMatch.group(1));
-            intent.diastolic = Integer.parseInt(pressMatch.group(2));
+            Integer s = parseCnInt(pressMatch.group(1));
+            Integer d = parseCnInt(pressMatch.group(2));
+            if (inRange(s, 60, 260)) intent.systolic = s;
+            if (inRange(d, 40, 180)) intent.diastolic = d;
         }
         if (intent.systolic == null) {
-            Matcher sys = SYS_PATTERN.matcher(userText);
-            if (sys.find()) intent.systolic = Integer.parseInt(sys.group(1));
-        }
-        if (intent.systolic == null) {
-            Matcher sysOnly = SYS_ONLY_PATTERN.matcher(userText);
-            if (sysOnly.find()) intent.systolic = Integer.parseInt(sysOnly.group(1));
+            Matcher sys = SYS_ONLY_PATTERN.matcher(userText);
+            if (sys.find()) {
+                Integer v = parseCnInt(sys.group(1));
+                if (inRange(v, 60, 260)) intent.systolic = v;
+            }
         }
         if (intent.diastolic == null) {
-            Matcher dia = DIA_PATTERN.matcher(userText);
-            if (dia.find()) intent.diastolic = Integer.parseInt(dia.group(1));
+            Matcher dia = DIA_ONLY_PATTERN.matcher(userText);
+            if (dia.find()) {
+                Integer v = parseCnInt(dia.group(1));
+                if (inRange(v, 40, 180)) intent.diastolic = v;
+            }
         }
         Matcher sugarMatch = SUGAR_PATTERN.matcher(userText);
         if (sugarMatch.find()) {
-            intent.bloodSugar = Double.parseDouble(sugarMatch.group(1));
+            Double v = parseCnDouble(sugarMatch.group(1));
+            if (inRange(v, 1.0, 60.0)) intent.bloodSugar = v;
         }
         Matcher heartMatch = HEART_PATTERN.matcher(userText);
         if (heartMatch.find()) {
-            intent.heartRate = Integer.parseInt(heartMatch.group(1));
+            Integer v = parseCnInt(heartMatch.group(1));
+            if (inRange(v, 30, 220)) intent.heartRate = v;
         }
         Matcher tempMatch = TEMP_PATTERN.matcher(userText);
         if (tempMatch.find()) {
-            intent.temperature = Double.parseDouble(tempMatch.group(1));
+            Double v = parseCnDouble(tempMatch.group(1));
+            if (inRange(v, 33.0, 45.0)) intent.temperature = v;
         }
         return intent;
+    }
+
+    /** 解析阿拉伯或中文整数（七十→70，七十三→73，十六→16，一百二→102，十六点五→走小数） */
+    private Integer parseCnInt(String raw) {
+        if (raw == null || raw.isEmpty()) return null;
+        String s = raw.replaceAll("[多左右大概约几]", "").trim();
+        try {
+            return Integer.parseInt(s);
+        } catch (NumberFormatException ignore) {
+            // 继续尝试中文
+        }
+        int total = 0, num = 0;
+        boolean hasNum = false;
+        for (char c : s.toCharArray()) {
+            if (c == '点' || c == '.') break; // 整数部分到此为止
+            int d = cnDigit(c);
+            if (d >= 0) {
+                num = d;
+                hasNum = true;
+            } else if (c == '十') {
+                total += (num == 0 && !hasNum) ? 10 : num * 10;
+                num = 0;
+                hasNum = false;
+            } else if (c == '百') {
+                total += (num == 0) ? 100 : num * 100;
+                num = 0;
+                hasNum = false;
+            }
+        }
+        total += num;
+        return hasNum ? total : null;
+    }
+
+    /** 解析阿拉伯或中文小数（十六点五→16.5，七点二→7.2） */
+    private Double parseCnDouble(String raw) {
+        if (raw == null || raw.isEmpty()) return null;
+        String s = raw.replaceAll("[多左右大概约几]", "").trim();
+        try {
+            return Double.parseDouble(s);
+        } catch (NumberFormatException ignore) {
+            // 继续尝试中文
+        }
+        if (s.contains("点") || s.contains(".")) {
+            String[] parts = s.split("[点\\.]");
+            Integer ip = parseCnInt(parts[0]);
+            if (ip == null) return null;
+            double frac = 0;
+            if (parts.length > 1) {
+                StringBuilder fb = new StringBuilder();
+                for (char c : parts[1].toCharArray()) {
+                    int d = cnDigit(c);
+                    if (d >= 0) fb.append(d);
+                }
+                if (fb.length() > 0) {
+                    frac = Integer.parseInt(fb.toString()) / Math.pow(10, fb.length());
+                }
+            }
+            return ip + frac;
+        }
+        Integer i = parseCnInt(s);
+        return i == null ? null : i.doubleValue();
+    }
+
+    private static boolean inRange(Integer v, int lo, int hi) {
+        return v != null && v >= lo && v <= hi;
+    }
+
+    private static boolean inRange(Double v, double lo, double hi) {
+        return v != null && v >= lo && v <= hi;
     }
 
     private String buildDataSummary(Integer systolic, Integer diastolic, Integer heartRate,
