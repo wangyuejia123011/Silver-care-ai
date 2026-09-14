@@ -4,6 +4,7 @@ import com.alibaba.fastjson2.JSON;
 import com.elderly.entity.ChatLog;
 import com.elderly.service.ChatLogService;
 import com.elderly.util.BaiduSpeechUtil;
+import com.elderly.util.CnNumberUtil;
 import com.elderly.util.FraudKeywordUtil;
 import com.elderly.util.LlmUtil;
 import com.elderly.util.PromptUtil;
@@ -111,6 +112,8 @@ public class VoiceAgent {
         }
         // 方言"是/十"同音消歧：四川话等口音中极易混淆，需在进入意图分类前修正
         finalText = fixShiShi(finalText);
+        // 中文数字 → 阿拉伯数字（十六点五→16.5、一百二→120、三十六点五→36.5），便于落库与显示
+        finalText = CnNumberUtil.normalize(finalText);
         result.put("text", finalText);
         return result;
     }
@@ -157,6 +160,8 @@ public class VoiceAgent {
             }
             // 2.5 方言"是/十"同音消歧（四川话等口音中极易混淆）
             cleanText = fixShiShi(cleanText);
+            // 2.6 中文数字 → 阿拉伯数字，便于落库与显示
+            cleanText = CnNumberUtil.normalize(cleanText);
 
             // 3. 推送识别结果 + 意图路由流
             return Flux.concat(

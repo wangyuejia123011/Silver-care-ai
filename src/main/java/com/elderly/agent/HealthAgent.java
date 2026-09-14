@@ -8,6 +8,7 @@ import com.elderly.service.ElderlyUserService;
 import com.elderly.service.HealthNotifyService;
 import com.elderly.service.HealthRecordService;
 import com.elderly.util.ChromaUtil;
+import com.elderly.util.CnNumberUtil;
 import com.elderly.util.HealthRiskEvaluator;
 import com.elderly.util.LlmUtil;
 import com.elderly.util.PromptUtil;
@@ -103,9 +104,10 @@ public class HealthAgent {
     }
 
     public AgentResult analyseHealth(String userText, Long userId) {
-        // ===== 0. 方言鲁棒化：关键词同音归一 + 是/十保险消歧（ASR 已消歧，此处补漏） =====
+        // ===== 0. 方言鲁棒化：关键词同音归一 + 是/十保险消歧 + 中文数字→阿拉伯（ASR 已做，此处补漏） =====
         String normText = normalizeDialectKeywords(userText);
         normText = ruleShiShiFix(normText);
+        normText = CnNumberUtil.normalize(normText);
 
         // ===== 1. 大模型理解意图 + 正则提取指标 =====
         HealthIntent intent = extractIntentAndMetrics(normText);
@@ -173,7 +175,7 @@ public class HealthAgent {
         Map<String, String> params = new HashMap<>();
         params.put("context", context.isBlank() ? "（暂无参考资料，请按常识回答并提醒就医）" : context);
         params.put("data", dataSummary);
-        params.put("question", userText);
+        params.put("question", normText);
 
         String fullPrompt;
         try {
@@ -189,13 +191,13 @@ public class HealthAgent {
             warning += " 系统已通知家属和护工，马上会有人联系您！";
 
             HealthRecord record = buildRecord(userId, profile, systolic, diastolic, heartRate, bloodSugar,
-                    temperature, "voice", userText, riskLevel);
+                    temperature, "voice", normText, riskLevel);
             record.setIsAlert(1);
             record.setAiAdvice(warning);
             persistAndNotify(record, userText);
 
             AgentResult orderResult = orderDispatchAgent.dispatch(
-                    "老人语音上报高危健康情况：" + dataSummary + "。原话：" + userText, userId, true);
+                    "老人语音上报高危健康情况：" + dataSummary + "。原话：" + normText, userId, true);
             CareOrder order = orderResult.getOrder();
 
             AgentResult result = AgentResult.of("health", Flux.just(warning));
@@ -218,7 +220,7 @@ public class HealthAgent {
         Long recordId = null;
         try {
             HealthRecord record = buildRecord(userId, fProfile, fSystolic, fDiastolic, fHeartRate,
-                    fBloodSugar, fTemperature, "voice", userText, fRisk);
+                    fBloodSugar, fTemperature, "voice", normText, fRisk);
             record.setAiAdvice(""); // 占位，流式完成后再更新
             persistAndNotify(record, userText);
             attachNotifySummary(result, record, userText);
