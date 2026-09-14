@@ -103,8 +103,14 @@ public class HealthAgent {
     }
 
     public AgentResult analyseHealth(String userText, Long userId) {
+        // ===== 0. 方言鲁棒化：关键词同音归一 + 是/十保险消歧（ASR 已消歧，此处补漏） =====
+        String normText = normalizeDialectKeywords(userText);
+        normText = ruleShiShiFix(normText);
+
         // ===== 1. 大模型理解意图 + 正则提取指标 =====
-        HealthIntent intent = extractIntentAndMetrics(userText);
+        HealthIntent intent = extractIntentAndMetrics(normText);
+        // 正则未抽全时，用大模型结构化抽取兜底（解决方言同音错字、中文双值血压等）
+        intent = supplementByLlm(normText, intent);
 
         // ===== 2. 读取老人档案 =====
         ElderlyUser profile = null;
@@ -237,6 +243,122 @@ public class HealthAgent {
                 }));
         result.setStream(stream);
         return result;
+    }
+
+    // ============ 方言鲁棒化辅助方法 ============
+
+    /** 方言同音错字 → 标准健康关键词，提升正则/大模型抽取命中率 */
+    private String normalizeDialectKeywords(String text) {
+        if (text == null) return text;
+        String s = text;
+        // 血压：血/学/写 + 呀牙亚哑
+        s = s.replaceAll("血[呀牙亚哑]", "血压")
+             .replaceAll("学[呀牙亚哑]", "血压")
+             .replaceAll("写[呀牙亚哑]", "血压");
+        // 血糖：血/写/学 + 唐堂塘
+        s = s.replaceAll("血[唐堂塘]", "血糖")
+             .replaceAll("写[唐堂塘]", "血糖")
+             .replaceAll("学[唐堂塘]", "血糖");
+        // 心率：心/新 + 绿吕旅
+        s = s.replaceAll("心[绿吕旅]", "心率")
+             .replaceAll("新[绿吕旅]", "心率");
+        // 体温：体/提 + 问文
+        s = s.replaceAll("体[问文]", "体温")
+             .replaceAll("提[问文]", "体温");
+        // 低压/高压 方言
+        s = s.replaceAll("滴[鸭牙]", "低压").replaceAll("低[呀牙]", "低压");
+        s = s.replaceAll("高[鸭牙]", "高压");
+        return s;
+    }
+
+    /** 轻量"是/十"消歧（规则层，与 VoiceAgent 对齐；ASR 已做 LLM 消歧，此处补漏） */
+    private String ruleShiShiFix(String text) {
+        if (text == null) return text;
+        String s = text;
+        s = s.replaceAll("([0-9零一二三四五六七八九两十百千万])是([0-9零一二三四五六七八九两点几多来号岁块元分斤个倍])", "$1十$2");
+        s = s.replaceAll("是(点|号|岁|块|元|分|斤|度|个|倍)([0-9零一二三四五六七八九两])", "十$1$2");
+        s = s.replace("两是", "二十");
+        s = s.replaceAll("(我|你|他|她|它|咱|这|那|也|还|都|就|正|才|真|可|又|总|别)十(?![0-9零一二三四五六七八九两十百千万块元岁斤度个倍点号年日月分])", "$1是");
+        s = s.replace("十的", "是的");
+        return s;
+    }
+
+    /** 正则未抽全时，调大模型做结构化抽取并补全缺失指标（解决方言同音错字、中文双值血压） */
+    private HealthIntent supplementByLlm(String normText, HealthIntent regex) {
+        boolean hasBp = normText.contains("血压") || normText.contains("高压") || normText.contains("低压");
+        boolean hasSugar = normText.contains("血糖");
+        boolean hasHeart = normText.contains("心率") || normText.contains("心跳") || normText.contains("脉搏");
+        boolean hasTemp = normText.contains("体温") || normText.contains("发烧") || normText.contains("发热");
+        boolean regexEmpty = regex.systolic == null && regex.diastolic == null
+                && regex.heartRate == null && regex.bloodSugar == null && regex.temperature == null;
+        boolean need = regexEmpty
+                || (hasBp && (regex.systolic == null || regex.diastolic == null))
+                || (hasSugar && regex.bloodSugar == null)
+                || (hasHeart && regex.heartRate == null)
+                || (hasTemp && regex.temperature == null);
+        if (!need) return regex;
+        HealthIntent llm = llmExtractMetrics(normText);
+        if (llm == null) return regex;
+        if (regex.systolic == null) regex.systolic = llm.systolic;
+        if (regex.diastolic == null) regex.diastolic = llm.diastolic;
+        if (regex.heartRate == null) regex.heartRate = llm.heartRate;
+        if (regex.bloodSugar == null) regex.bloodSugar = llm.bloodSugar;
+        if (regex.temperature == null) regex.temperature = llm.temperature;
+        return regex;
+    }
+
+    private HealthIntent llmExtractMetrics(String text) {
+        try {
+            String prompt = "你是医疗语音结构化抽取助手。下面是一段中国方言(四川话/河南话/粤语)或口语的健康描述，"
+                    + "方言里'是'(shì)和'十'(shí)常因口音混淆，数值、数量、血压血糖等度量处应为'十'"
+                    + "(如'血压是一百六'指160、'血糖十六点五'指16.5、'血压一百六八十'指160/80)。\n"
+                    + "请抽取医学指标，只输出一个JSON对象，字段："
+                    + "systolic(收缩压整数)、diastolic(舒张压整数)、heartRate(心率整数)、"
+                    + "bloodSugar(血糖数字)、temperature(体温数字)。未提及填null。\n"
+                    + "只输出JSON，不要解释、不要多余文字。\n原文：" + text;
+            String resp = llmUtil.chatSync(prompt);
+            if (resp == null || resp.isBlank()) return null;
+            int sIdx = resp.indexOf('{');
+            int eIdx = resp.lastIndexOf('}');
+            if (sIdx < 0 || eIdx <= sIdx) return null;
+            String json = resp.substring(sIdx, eIdx + 1);
+            Map<String, Object> obj = com.alibaba.fastjson2.JSON.parseObject(json, Map.class);
+            if (obj == null) return null;
+            HealthIntent it = new HealthIntent();
+            it.systolic = optInt(obj, "systolic");
+            it.diastolic = optInt(obj, "diastolic");
+            it.heartRate = optInt(obj, "heartRate");
+            it.bloodSugar = optDouble(obj, "bloodSugar");
+            it.temperature = optDouble(obj, "temperature");
+            return it;
+        } catch (Exception ex) {
+            log.warn("大模型结构化抽取健康指标失败: {}", ex.getMessage());
+            return null;
+        }
+    }
+
+    private Integer optInt(Map<String, Object> o, String k) {
+        Object v = o.get(k);
+        if (v == null) return null;
+        try {
+            int n = (v instanceof Number) ? ((Number) v).intValue() : Integer.parseInt(v.toString().trim());
+            return inRange(n, 30, 300) ? n : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private Double optDouble(Map<String, Object> o, String k) {
+        Object v = o.get(k);
+        if (v == null) return null;
+        try {
+            double n = (v instanceof Number) ? ((Number) v).doubleValue() : Double.parseDouble(v.toString().trim());
+            if ("bloodSugar".equals(k)) return inRange(n, 1.0, 60.0) ? n : null;
+            if ("temperature".equals(k)) return inRange(n, 30.0, 45.0) ? n : null;
+            return n;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** 从文本中提取健康指标（支持阿拉伯数字与中文数字：七十/十六点五/一百二） */
