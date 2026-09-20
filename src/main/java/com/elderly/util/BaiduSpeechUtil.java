@@ -170,7 +170,8 @@ public class BaiduSpeechUtil {
             try {
                 HashMap<String, Object> options = new HashMap<>();
                 options.put("dev_pid", targetPid);
-                JSONObject sdkResult = client.asr(audioBytes, isWav(audioBytes) ? "wav" : "pcm", 16000, options);
+                boolean sdkWav = isWav(audioBytes);
+                JSONObject sdkResult = client.asr(audioBytes, sdkWav ? "wav" : "pcm", sdkWav ? readWavSampleRate(audioBytes) : 16000, options);
                 int errNo = sdkResult.optInt("err_no", -999);
                 if (errNo != 0) {
                     failResult.put("err_no", errNo);
@@ -200,10 +201,12 @@ public class BaiduSpeechUtil {
         }
         String base64Audio = Base64.getEncoder().encodeToString(audio);
         JSONObject body = new JSONObject();
-        // 自适应格式：wav 自带文件头(自描述采样率/位深)，百度从文件头读取，避免真机采样率错配；
+        // 自适应格式：wav 自带文件头(自描述采样率/位深)，从文件头读取真实采样率传给百度，
+        // 彻底规避真机 RecorderManager 忽略 sampleRate、rate 与音频实际不符导致的整句识别失败；
         // pcm 为裸数据，沿用 16000
-        body.put("format", isWav(audio) ? "wav" : "pcm");
-        body.put("rate", 16000);
+        boolean wav = isWav(audio);
+        body.put("format", wav ? "wav" : "pcm");
+        body.put("rate", wav ? readWavSampleRate(audio) : 16000);
         body.put("channel", 1);
         body.put("cuid", "silver-care-ai");
         body.put("token", token);
@@ -232,6 +235,20 @@ public class BaiduSpeechUtil {
         // "RIFF" at 0, "WAVE" at 8
         return audio[0] == 'R' && audio[1] == 'I' && audio[2] == 'F' && audio[3] == 'F'
                 && audio[8] == 'W' && audio[9] == 'A' && audio[10] == 'V' && audio[11] == 'E';
+    }
+
+    /**
+     * 从 WAV 文件头读取真实采样率（offset 24 起 4 字节 little-endian），
+     * 避免依赖调用方声称的 sampleRate（真机 RecorderManager 常忽略该参数）。
+     * 非 WAV 或头部不完整时回退 16000。
+     */
+    private int readWavSampleRate(byte[] audio) {
+        if (audio == null || audio.length < 28) return 16000;
+        int rate = (audio[24] & 0xff)
+                | ((audio[25] & 0xff) << 8)
+                | ((audio[26] & 0xff) << 16)
+                | ((audio[27] & 0xff) << 24);
+        return (rate > 0) ? rate : 16000;
     }
 
     /**
