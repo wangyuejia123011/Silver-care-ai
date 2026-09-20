@@ -170,7 +170,9 @@ public class BaiduSpeechUtil {
             try {
                 HashMap<String, Object> options = new HashMap<>();
                 options.put("dev_pid", targetPid);
-                JSONObject sdkResult = client.asr(audioBytes, "pcm", 16000, options);
+                boolean sdkWav = isWav(audioBytes);
+                byte[] sdkAudio = sdkWav ? resampleWavTo16k(audioBytes) : audioBytes;
+                JSONObject sdkResult = client.asr(sdkAudio, sdkWav ? "wav" : "pcm", 16000, options);
                 int errNo = sdkResult.optInt("err_no", -999);
                 if (errNo != 0) {
                     failResult.put("err_no", errNo);
@@ -198,14 +200,38 @@ public class BaiduSpeechUtil {
             fail.put("err_msg", "获取百度access_token失败");
             return fail;
         }
-        String base64Audio = Base64.getEncoder().encodeToString(audio);
+        // 真机 RecorderManager 的 sampleRate 常被忽略，实际采样率可能是 8k/16k/44.1k/48k 等。
+        // 百度 REST API 的 rate 必须与音频真实采样率一致，否则整句乱码（"完全听不懂"的根因）。
+        // 解决方案：
+        //  - WAV 自带文件头，从头部读取真实采样率，百度原生支持的 8k/16k 直传，其余重采样到 16k；
+        //  - PCM 裸数据无文件头，后端无法得知真实采样率，只能按 16k 解（真机若录非 16k 会乱码，
+        //    故前端必须改用 WAV 格式才能彻底规避）。
+        String base64Audio;
+        String format;
+        int rate;
+        if (isWav(audio)) {
+            int sr = readWavSampleRate(audio);
+            if (sr == 8000 || sr == 16000) {
+                // 百度原生支持 8k/16k，直接传完整 wav 文件
+                base64Audio = Base64.getEncoder().encodeToString(audio);
+                format = "wav";
+                rate = sr;
+            } else {
+                // 非标采样率（如 44.1k/32k/48k）统一重采样到 16k，百度仅支持 8k/16k
+                byte[] wav16k = resampleWavTo16k(audio);
+                base64Audio = Base64.getEncoder().encodeToString(wav16k);
+                format = "wav";
+                rate = 16000;
+            }
+        } else {
+            // PCM 裸数据：无文件头，后端不知真实采样率，只能按 16k 解（兼容旧前端）
+            base64Audio = Base64.getEncoder().encodeToString(audio);
+            format = "pcm";
+            rate = 16000;
+        }
         JSONObject body = new JSONObject();
-        // 自适应格式：wav 自带文件头(自描述采样率/位深)，从文件头读取真实采样率传给百度，
-        // 彻底规避真机 RecorderManager 忽略 sampleRate、rate 与音频实际不符导致的整句识别失败；
-        // pcm 为裸数据，沿用 16000
-        // 回到最初可用方案：裸 PCM + 固定 16k（真机 PCM 录音实际即为 16k，百度按 16k 解正常）
-        body.put("format", "pcm");
-        body.put("rate", 16000);
+        body.put("format", format);
+        body.put("rate", rate);
         body.put("channel", 1);
         body.put("cuid", "silver-care-ai");
         body.put("token", token);
