@@ -85,4 +85,12 @@
         ORDER BY record_time DESC
     </select>
 
+    <delete id="deleteByUserId">
+        DELETE FROM health_record WHERE user_id = #{userId}
+    </delete>
+
+    <update id="updateAiAdviceById">
+        UPDATE health_record SET ai_advice = #{aiAdvice}, update_time = NOW() WHERE id = #{id}
+    </update>
+
 </mapper>

@@ -43,4 +43,8 @@
         WHERE is_handled = 0 ORDER BY create_time DESC
     </select>
 
+    <delete id="deleteByUserId">
+        DELETE FROM fraud_alert WHERE user_id = #{userId}
+    </delete>
+
 </mapper>

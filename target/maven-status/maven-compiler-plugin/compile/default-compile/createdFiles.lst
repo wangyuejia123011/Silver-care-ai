@@ -7,6 +7,7 @@ com\elderly\controller\CaregiverController.class
 com\elderly\service\impl\DailyCareServiceImpl.class
 com\elderly\entity\DailyReport.class
 com\elderly\ws\OrderWebSocketHandler.class
+com\elderly\util\CnNumberUtil.class
 com\elderly\service\impl\MedicationReminderServiceImpl.class
 com\elderly\agent\OrderDispatchAgent.class
 com\elderly\service\impl\FamilyBindServiceImpl.class

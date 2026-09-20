@@ -171,7 +171,8 @@ public class BaiduSpeechUtil {
                 HashMap<String, Object> options = new HashMap<>();
                 options.put("dev_pid", targetPid);
                 boolean sdkWav = isWav(audioBytes);
-                JSONObject sdkResult = client.asr(audioBytes, sdkWav ? "wav" : "pcm", sdkWav ? readWavSampleRate(audioBytes) : 16000, options);
+                byte[] sdkAudio = sdkWav ? resampleWavTo16k(audioBytes) : audioBytes;
+                JSONObject sdkResult = client.asr(sdkAudio, sdkWav ? "wav" : "pcm", 16000, options);
                 int errNo = sdkResult.optInt("err_no", -999);
                 if (errNo != 0) {
                     failResult.put("err_no", errNo);
@@ -205,8 +206,14 @@ public class BaiduSpeechUtil {
         // 彻底规避真机 RecorderManager 忽略 sampleRate、rate 与音频实际不符导致的整句识别失败；
         // pcm 为裸数据，沿用 16000
         boolean wav = isWav(audio);
+        if (wav) {
+            // 真机 wav 实际采样率常被 RecorderManager 忽略（如按 44100 录），
+            // 百度 REST API 的 rate 仅支持 8k/16k，裸透传非标采样率会直接识别失败。
+            // 统一重采样到 16k，彻底规避采样率不匹配导致的整句听不懂。
+            audio = resampleWavTo16k(audio);
+        }
         body.put("format", wav ? "wav" : "pcm");
-        body.put("rate", wav ? readWavSampleRate(audio) : 16000);
+        body.put("rate", 16000);
         body.put("channel", 1);
         body.put("cuid", "silver-care-ai");
         body.put("token", token);
@@ -249,6 +256,100 @@ public class BaiduSpeechUtil {
                 | ((audio[26] & 0xff) << 16)
                 | ((audio[27] & 0xff) << 24);
         return (rate > 0) ? rate : 16000;
+    }
+
+    /**
+     * 将 WAV 重采样到 16kHz/16bit（线性插值）。
+     * 真机录出的 wav 采样率可能是 44100/32000/48000 等百度不支持的值，
+     * 统一降到 16k 后再发给百度，确保 rate=16000 一定匹配。
+     * 非 WAV、已是 16k、或非 16bit 的情况原样返回（交给百度按原逻辑处理）。
+     */
+    private byte[] resampleWavTo16k(byte[] wav) {
+        if (!isWav(wav) || wav.length < 44) return wav;
+        int channels = readShortLE(wav, 22);
+        int bitsPerSample = readShortLE(wav, 34);
+        int sampleRate = readIntLE(wav, 24);
+        if (channels <= 0 || bitsPerSample != 16 || sampleRate == 16000) {
+            return wav;
+        }
+        int dataPos = findSubchunk(wav, "data");
+        if (dataPos < 0) return wav;
+        int dataSize = readIntLE(wav, dataPos + 4);
+        int dataStart = dataPos + 8;
+        if (dataStart + dataSize > wav.length) dataSize = wav.length - dataStart;
+        if (dataSize <= 0) return wav;
+
+        int bytesPerSample = bitsPerSample / 8;
+        int frameSize = channels * bytesPerSample;
+        int origFrames = dataSize / frameSize;
+        double ratio = (double) 16000 / sampleRate;
+        int newFrames = (int) Math.round(origFrames * ratio);
+        if (newFrames <= 0) return wav;
+
+        byte[] newData = new byte[newFrames * frameSize];
+        for (int c = 0; c < channels; c++) {
+            for (int i = 0; i < newFrames; i++) {
+                double srcPos = i / ratio;            // 源帧浮点位置
+                int i0 = (int) srcPos;
+                int i1 = Math.min(i0 + 1, origFrames - 1);
+                double frac = srcPos - i0;
+                int s0 = readShortLE(wav, dataStart + i0 * frameSize + c * bytesPerSample);
+                int s1 = readShortLE(wav, dataStart + i1 * frameSize + c * bytesPerSample);
+                int val = (int) (s0 + (s1 - s0) * frac);
+                if (val > 32767) val = 32767;
+                if (val < -32768) val = -32768;
+                writeShortLE(newData, i * frameSize + c * bytesPerSample, val);
+            }
+        }
+
+        // 重建标准 44 字节 PCM WAV 头（16k）
+        int newDataSize = newData.length;
+        byte[] out = new byte[44 + newDataSize];
+        out[0] = 'R'; out[1] = 'I'; out[2] = 'F'; out[3] = 'F';
+        writeIntLE(out, 4, 36 + newDataSize);
+        out[8] = 'W'; out[9] = 'A'; out[10] = 'V'; out[11] = 'E';
+        out[12] = 'f'; out[13] = 'm'; out[14] = 't'; out[15] = ' ';
+        writeIntLE(out, 16, 16);                       // subchunk1Size
+        writeShortLE(out, 20, 1);                     // PCM
+        writeShortLE(out, 22, channels);
+        writeIntLE(out, 24, 16000);                   // 采样率固定 16k
+        writeIntLE(out, 28, 16000 * channels * bytesPerSample); // byteRate
+        writeShortLE(out, 32, (short) (channels * bytesPerSample)); // blockAlign
+        writeShortLE(out, 34, (short) bitsPerSample);
+        out[36] = 'd'; out[37] = 'a'; out[38] = 't'; out[39] = 'a';
+        writeIntLE(out, 40, newDataSize);
+        System.arraycopy(newData, 0, out, 44, newDataSize);
+        return out;
+    }
+
+    // ---- WAV 解析辅助 ----
+    private int readShortLE(byte[] b, int off) {
+        return (b[off] & 0xff) | ((b[off + 1] & 0xff) << 8);
+    }
+    private void writeShortLE(byte[] b, int off, int v) {
+        b[off] = (byte) (v & 0xff);
+        b[off + 1] = (byte) ((v >> 8) & 0xff);
+    }
+    private int readIntLE(byte[] b, int off) {
+        return (b[off] & 0xff) | ((b[off + 1] & 0xff) << 8)
+                | ((b[off + 2] & 0xff) << 16) | ((b[off + 3] & 0xff) << 24);
+    }
+    private void writeIntLE(byte[] b, int off, int v) {
+        b[off] = (byte) (v & 0xff);
+        b[off + 1] = (byte) ((v >> 8) & 0xff);
+        b[off + 2] = (byte) ((v >> 16) & 0xff);
+        b[off + 3] = (byte) ((v >> 24) & 0xff);
+    }
+    /** 在 WAV 中查找名为 id 的子块偏移（'data' 等），找不到返回 -1 */
+    private int findSubchunk(byte[] wav, String id) {
+        int p = 12;
+        while (p + 8 <= wav.length) {
+            String tag = new String(wav, p, 4, java.nio.charset.StandardCharsets.US_ASCII);
+            int size = readIntLE(wav, p + 4);
+            if (tag.equals(id)) return p;
+            p += 8 + size + (size & 1); // 按 2 字节对齐跳过
+        }
+        return -1;
     }
 
     /**

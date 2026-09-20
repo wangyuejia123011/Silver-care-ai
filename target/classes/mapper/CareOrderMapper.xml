@@ -78,4 +78,8 @@
         WHERE id = #{id}
     </update>
 
+    <delete id="deleteByUserId">
+        DELETE FROM care_order WHERE user_id = #{userId}
+    </delete>
+
 </mapper>
