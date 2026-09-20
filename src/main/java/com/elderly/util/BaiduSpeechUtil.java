@@ -170,9 +170,7 @@ public class BaiduSpeechUtil {
             try {
                 HashMap<String, Object> options = new HashMap<>();
                 options.put("dev_pid", targetPid);
-                boolean sdkWav = isWav(audioBytes);
-                byte[] sdkAudio = sdkWav ? resampleWavTo16k(audioBytes) : audioBytes;
-                JSONObject sdkResult = client.asr(sdkAudio, sdkWav ? "wav" : "pcm", 16000, options);
+                JSONObject sdkResult = client.asr(audioBytes, "pcm", 16000, options);
                 int errNo = sdkResult.optInt("err_no", -999);
                 if (errNo != 0) {
                     failResult.put("err_no", errNo);
@@ -205,14 +203,8 @@ public class BaiduSpeechUtil {
         // 自适应格式：wav 自带文件头(自描述采样率/位深)，从文件头读取真实采样率传给百度，
         // 彻底规避真机 RecorderManager 忽略 sampleRate、rate 与音频实际不符导致的整句识别失败；
         // pcm 为裸数据，沿用 16000
-        boolean wav = isWav(audio);
-        if (wav) {
-            // 真机 wav 实际采样率常被 RecorderManager 忽略（如按 44100 录），
-            // 百度 REST API 的 rate 仅支持 8k/16k，裸透传非标采样率会直接识别失败。
-            // 统一重采样到 16k，彻底规避采样率不匹配导致的整句听不懂。
-            audio = resampleWavTo16k(audio);
-        }
-        body.put("format", wav ? "wav" : "pcm");
+        // 回到最初可用方案：裸 PCM + 固定 16k（真机 PCM 录音实际即为 16k，百度按 16k 解正常）
+        body.put("format", "pcm");
         body.put("rate", 16000);
         body.put("channel", 1);
         body.put("cuid", "silver-care-ai");
