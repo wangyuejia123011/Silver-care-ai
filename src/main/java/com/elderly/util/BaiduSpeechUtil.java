@@ -170,7 +170,7 @@ public class BaiduSpeechUtil {
             try {
                 HashMap<String, Object> options = new HashMap<>();
                 options.put("dev_pid", targetPid);
-                JSONObject sdkResult = client.asr(audioBytes, "pcm", 16000, options);
+                JSONObject sdkResult = client.asr(audioBytes, isWav(audioBytes) ? "wav" : "pcm", 16000, options);
                 int errNo = sdkResult.optInt("err_no", -999);
                 if (errNo != 0) {
                     failResult.put("err_no", errNo);
@@ -200,7 +200,9 @@ public class BaiduSpeechUtil {
         }
         String base64Audio = Base64.getEncoder().encodeToString(audio);
         JSONObject body = new JSONObject();
-        body.put("format", "pcm");
+        // 自适应格式：wav 自带文件头(自描述采样率/位深)，百度从文件头读取，避免真机采样率错配；
+        // pcm 为裸数据，沿用 16000
+        body.put("format", isWav(audio) ? "wav" : "pcm");
         body.put("rate", 16000);
         body.put("channel", 1);
         body.put("cuid", "silver-care-ai");
@@ -219,6 +221,17 @@ public class BaiduSpeechUtil {
                 .build();
         HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
         return new JSONObject(resp.body());
+    }
+
+    /**
+     * 判断音频是否为 WAV 格式（RIFF....WAVE 文件头）。
+     * 微信 RecorderManager 用 format:'wav' 录制的即为标准 WAV，自带采样率/位深，百度可免填 rate 直接解析。
+     */
+    private boolean isWav(byte[] audio) {
+        if (audio == null || audio.length < 12) return false;
+        // "RIFF" at 0, "WAVE" at 8
+        return audio[0] == 'R' && audio[1] == 'I' && audio[2] == 'F' && audio[3] == 'F'
+                && audio[8] == 'W' && audio[9] == 'A' && audio[10] == 'V' && audio[11] == 'E';
     }
 
     /**
