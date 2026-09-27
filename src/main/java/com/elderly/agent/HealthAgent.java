@@ -203,6 +203,8 @@ public class HealthAgent {
             AgentResult result = AgentResult.of("health", Flux.just(warning));
             result.setOrder(order);
             result.setRiskLevel(riskLevel);
+            // 触发前端红色告警卡片（分级来自规则引擎，非大模型判断）
+            result.setRiskJson(buildRiskEvent(riskLevel, systolic, diastolic, heartRate, bloodSugar, temperature));
             attachNotifySummary(result, record, userText);
             return result;
         }
@@ -215,6 +217,10 @@ public class HealthAgent {
 
         AgentResult result = AgentResult.of("health", Flux.empty());
         result.setRiskLevel(riskLevel);
+        // 中危触发前端黄色提醒卡片（分级来自规则引擎，非大模型判断）
+        if (!"low".equals(riskLevel)) {
+            result.setRiskJson(buildRiskEvent(riskLevel, systolic, diastolic, heartRate, bloodSugar, temperature));
+        }
 
         // 先同步落库：指标立刻可见，避免SSE完成后前端刷新仍取不到数据
         Long recordId = null;
@@ -534,6 +540,21 @@ public class HealthAgent {
             return "high";
         }
         return HealthRiskEvaluator.evaluateRisk(record);
+    }
+
+    /**
+     * 组装健康分级 SSE 事件（供前端弹红/黄告警卡片）。
+     * 分级完全由 HealthRiskEvaluator 规则引擎决定，大模型不参与判级。
+     * low 不产出事件（前端只渲染 high/medium）。
+     */
+    private String buildRiskEvent(String level, Integer systolic, Integer diastolic,
+                                  Integer heartRate, Double bloodSugar, Double temperature) {
+        if (!"high".equals(level) && !"medium".equals(level)) return null;
+        HealthRecord tmp = buildTempRecord(systolic, diastolic, heartRate, bloodSugar, temperature, null);
+        Map<String, String> m = new HashMap<>();
+        m.put("level", level);
+        m.put("tip", HealthRiskEvaluator.buildLevelTip(tmp, level));
+        return JSON.toJSONString(m);
     }
 
     private boolean hitSymptom(String text) {

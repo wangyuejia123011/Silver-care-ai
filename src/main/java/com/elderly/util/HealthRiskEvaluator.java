@@ -16,10 +16,10 @@ import com.elderly.entity.HealthRecord;
 public class HealthRiskEvaluator {
 
     // ==================== 血压阈值 ====================
-    /** 收缩压高危阈值（高于此值为高危） */
+    /** 收缩压高危阈值（达到此值即高危：≥180） */
     public static final int SYS_HIGH = 180;
-    /** 舒张压高危阈值 */
-    public static final int DIA_HIGH = 120;
+    /** 舒张压高危阈值（达到此值即高危：≥110） */
+    public static final int DIA_HIGH = 110;
     /** 收缩压中危阈值（高于此值为中危，低于此值且≥90为正常） */
     public static final int SYS_MEDIUM = 140;
     /** 收缩压偏低阈值（低于此值为中危） */
@@ -56,9 +56,10 @@ public class HealthRiskEvaluator {
     // ==================== 高危症状关键词 ====================
     public static final String[] HIGH_RISK_SYMPTOMS = {
             "胸痛", "心绞痛", "心梗",
-            "摔倒", "晕倒", "昏迷", "晕厥",
+            "摔倒", "跌倒", "晕倒", "昏迷", "晕厥",
             "呼吸困难", "喘不上气", "窒息",
             "抽搐", "意识不清", "意识模糊", "口吐白沫",
+            "中风", "卒中",
             "大出血", "呕血", "咯血"
     };
 
@@ -86,9 +87,9 @@ public class HealthRiskEvaluator {
     public static boolean isHighRisk(HealthRecord record) {
         if (record == null) return false;
 
-        // 血压
-        if (record.getSystolicPressure() != null && record.getSystolicPressure() > SYS_HIGH) return true;
-        if (record.getDiastolicPressure() != null && record.getDiastolicPressure() > DIA_HIGH) return true;
+        // 血压：收缩压≥180 或 舒张压≥110 直接红色告警
+        if (record.getSystolicPressure() != null && record.getSystolicPressure() >= SYS_HIGH) return true;
+        if (record.getDiastolicPressure() != null && record.getDiastolicPressure() >= DIA_HIGH) return true;
 
         // 心率
         if (record.getHeartRate() != null
@@ -113,10 +114,10 @@ public class HealthRiskEvaluator {
     public static boolean isMediumRisk(HealthRecord record) {
         if (record == null) return false;
 
-        // 血压
+        // 血压：收缩压140–179（≥140 且 <180，180 已被高危拦截）或 舒张压≥90 为黄色提醒
         if (record.getSystolicPressure() != null
-                && (record.getSystolicPressure() > SYS_MEDIUM || record.getSystolicPressure() < SYS_LOW)) return true;
-        if (record.getDiastolicPressure() != null && record.getDiastolicPressure() > DIA_MEDIUM) return true;
+                && (record.getSystolicPressure() >= SYS_MEDIUM || record.getSystolicPressure() < SYS_LOW)) return true;
+        if (record.getDiastolicPressure() != null && record.getDiastolicPressure() >= DIA_MEDIUM) return true;
 
         // 心率
         if (record.getHeartRate() != null
@@ -153,7 +154,7 @@ public class HealthRiskEvaluator {
             return sb.toString();
         }
 
-        if (record.getSystolicPressure() != null && record.getSystolicPressure() > SYS_HIGH) {
+        if (record.getSystolicPressure() != null && record.getSystolicPressure() >= SYS_HIGH) {
             sb.append("血压过高（").append(record.getSystolicPressure());
             if (record.getDiastolicPressure() != null) sb.append("/").append(record.getDiastolicPressure());
             sb.append("），");
@@ -184,5 +185,49 @@ public class HealthRiskEvaluator {
                 "mediumMax", BS_MEDIUM_MAX, "mediumMin", BS_MEDIUM_MIN));
         map.put("temperature", java.util.Map.of("high", TEMP_HIGH, "medium", TEMP_MEDIUM));
         return map;
+    }
+
+    /**
+     * 分级文案（红黄绿统一口径）：
+     *   high   —— 红色告警
+     *   medium —— 黄色提醒
+     *   low    —— 绿色正常
+     */
+    public static String levelText(String level) {
+        if ("high".equals(level)) return "红色告警";
+        if ("medium".equals(level)) return "黄色提醒";
+        return "绿色正常";
+    }
+
+    /**
+     * 分级配色（前端据此渲染红/黄/绿）：red / yellow / green
+     */
+    public static String levelColor(String level) {
+        if ("high".equals(level)) return "red";
+        if ("medium".equals(level)) return "yellow";
+        return "green";
+    }
+
+    /**
+     * 生成该分级对应的规则化提示文案（非大模型生成，供 SSE 与告警卡片复用）：
+     *   high   —— 危急，固定高危预警 + 已通知家属护工
+     *   medium —— 黄色提醒：建议复测 + 已通知家属关注
+     *   low    —— 不输出规则提示，交由大模型做解释安抚
+     */
+    public static String buildLevelTip(HealthRecord record, String level) {
+        if ("high".equals(level)) {
+            return buildHighRiskWarning(record) + " 系统已通知家属和护工，马上会有人联系您！";
+        }
+        if ("medium".equals(level)) {
+            StringBuilder sb = new StringBuilder("指标偏高");
+            if (record != null && record.getSystolicPressure() != null && record.getSystolicPressure() >= SYS_MEDIUM) {
+                sb.append("（血压").append(record.getSystolicPressure());
+                if (record.getDiastolicPressure() != null) sb.append("/").append(record.getDiastolicPressure());
+                sb.append("）");
+            }
+            sb.append("，建议 1–2 小时后复测一次，请留意身体感受，已通知家属关注。");
+            return sb.toString();
+        }
+        return "";
     }
 }
