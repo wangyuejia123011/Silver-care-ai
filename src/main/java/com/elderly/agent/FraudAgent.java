@@ -146,6 +146,7 @@ public class FraudAgent {
         saveAlert(userId, text, hitKeywords, riskLevel, detectType, tip, aiAnalysis, matchedCases);
 
         JSONObject risk = new JSONObject();
+        risk.put("type", "fraud");
         risk.put("level", riskLevel);
         risk.put("detectType", detectType);
         risk.put("contentRecognized", contentRecognized);

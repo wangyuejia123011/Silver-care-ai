@@ -552,6 +552,7 @@ public class HealthAgent {
         if (!"high".equals(level) && !"medium".equals(level)) return null;
         HealthRecord tmp = buildTempRecord(systolic, diastolic, heartRate, bloodSugar, temperature, null);
         Map<String, String> m = new HashMap<>();
+        m.put("type", "health");
         m.put("level", level);
         m.put("tip", HealthRiskEvaluator.buildLevelTip(tmp, level));
         return JSON.toJSONString(m);

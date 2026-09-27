@@ -45,13 +45,23 @@ public class DailyCareServiceImpl implements DailyCareService {
 
     /** 平稳时：按季节给出的贴切且多变的温馨提示池 */
     private static final Map<String, List<String>> SEASON_STEADY = new LinkedHashMap<>();
-    /** 异常时：结合季节的提醒池 */
-    private static final Map<String, List<String>> SEASON_ABNORMAL = new LinkedHashMap<>();
     /** 无健康记录时的随机提醒池 */
     private static final List<String> NO_RECORD_TIPS = Arrays.asList(
             "今天还未测量身体状况哦，抽空测个血压血糖吧",
             "今天还没收到您的健康数据，有空测一下告诉我",
             "今天尚未记录健康情况，记得测个血压血糖哦"
+    );
+    /** 红色预警时的关怀池（短句，先安抚再告知已有人关注） */
+    private static final List<String> RED_CARE_TIPS = Arrays.asList(
+            "今天指标偏高，您先坐下歇会儿，家人已经收到消息，别担心",
+            "今天数据有些高，先别做重活，有任何不舒服马上告诉我们",
+            "别担心，已提醒您的家人和护工，您先休息，我们一直陪着您"
+    );
+    /** 黄色提醒时的关怀池（温和建议复测） */
+    private static final List<String> YELLOW_CARE_TIPS = Arrays.asList(
+            "今天指标有点偏高，过一两个小时再测一次看看",
+            "今天数据稍微高了些，多喝温水，留意一下身体感受",
+            "指标有点小波动，按时吃药，稍后再复测一次哦"
     );
 
     static {
@@ -74,22 +84,6 @@ public class DailyCareServiceImpl implements DailyCareService {
                 "天冷血管收缩，注意保暖，起床慢一点防头晕",
                 "寒冬干燥多喝热水，室内适当加湿更舒服",
                 "冷天少晨练，等太阳出来再出门，护好关节"
-        ));
-        SEASON_ABNORMAL.put("春", Arrays.asList(
-                "今天指标偏高，春寒料峭更要注意保暖休息",
-                "今天指标有点高，换季身体敏感，按时服药多休息"
-        ));
-        SEASON_ABNORMAL.put("夏", Arrays.asList(
-                "今天指标偏高，暑热易加重负担，请静心休息",
-                "今天指标有异常，炎热天少外出，按时服药"
-        ));
-        SEASON_ABNORMAL.put("秋", Arrays.asList(
-                "今天指标偏高，秋燥伤身，多喝温水按时服药",
-                "今天指标有异常，换季注意养护，及时休息"
-        ));
-        SEASON_ABNORMAL.put("冬", Arrays.asList(
-                "今天指标偏高，寒冬血管脆弱，务必保暖休息",
-                "今天指标有异常，冷天少动，按时服药多静养"
         ));
     }
 
@@ -126,8 +120,10 @@ public class DailyCareServiceImpl implements DailyCareService {
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("todayRecordCount", todayHealth == null ? 0 : todayHealth.size());
         meta.put("recentRecordCount", recentHealth == null ? 0 : recentHealth.size());
-        boolean anyHighRisk = todayHealth != null && todayHealth.stream()
-                .anyMatch(r -> "high".equals(r.getRiskLevel()) || "medium".equals(r.getRiskLevel()));
+        // 当天最差分级：high > medium > low（规则引擎输出，直接决定温馨提示走哪条线）
+        String worstLevel = worstLevelOf(todayHealth);
+        meta.put("todayRiskLevel", worstLevel);
+        boolean anyHighRisk = "high".equals(worstLevel) || "medium".equals(worstLevel);
         meta.put("todayHasRisk", anyHighRisk);
         meta.put("medicationCount", meds == null ? 0 : meds.size());
         meta.put("timeOfDay", timeOfDay);
@@ -135,6 +131,10 @@ public class DailyCareServiceImpl implements DailyCareService {
         String dataSummary = buildDataSummary(user, todayHealth, recentHealth);
         Map<String, Object> generated = invokeLlm(user, dataSummary, meds, timeOfDay);
         if (generated == null) generated = fallback(user, todayHealth, anyHighRisk, meds, timeOfDay);
+
+        // 温馨提示按规则引擎分级覆盖（红/黄/绿/未测），不受 LLM 自由发挥影响
+        boolean hasRecord = todayHealth != null && !todayHealth.isEmpty();
+        generated.put("weatherTip", randomSeasonWeatherTip(hasRecord, worstLevel));
 
         // 服药提醒始终以真实计划为准，覆盖模型可能漏写的项
         generated.put("medicationReminders", toMedList(meds));
@@ -280,7 +280,7 @@ public class DailyCareServiceImpl implements DailyCareService {
         m.put("text", sb.toString());
         m.put("bullets", toBulletList(meds));
         m.put("medicationReminders", toMedList(meds));
-        m.put("weatherTip", randomSeasonWeatherTip(today != null && !today.isEmpty(), anyHighRisk));
+        m.put("weatherTip", randomSeasonWeatherTip(today != null && !today.isEmpty(), worstLevelOf(today)));
         m.put("medicationTip", buildMedicationTip(meds));
         m.put("source", "AI 关怀（基于今日健康数据 + 服药计划 + 档案）");
         return m;
@@ -318,16 +318,28 @@ public class DailyCareServiceImpl implements DailyCareService {
         return "冬";
     }
 
-    /** 根据季节 + 健康情况，随机生成一句「温馨提示」；每次调用都可能不同 */
-    private String randomSeasonWeatherTip(boolean hasRecord, boolean anyHighRisk) {
+    /** 根据分级 + 季节，随机生成一句「温馨提示」：未测→提醒测量；红/黄→关怀短句；绿→季节语句 */
+    private String randomSeasonWeatherTip(boolean hasRecord, String worstLevel) {
         String s = season();
-        if (hasRecord && anyHighRisk) {
-            return pick(SEASON_ABNORMAL.get(s), "今天健康指标有异常，请注意休息，按时服药");
-        }
         if (!hasRecord) {
             return pick(NO_RECORD_TIPS, "今天还未测量身体状况哦，及时测量哦");
         }
+        if ("high".equals(worstLevel)) {
+            return pick(RED_CARE_TIPS, "今天指标偏高，您先休息，家人已经收到消息，别担心");
+        }
+        if ("medium".equals(worstLevel)) {
+            return pick(YELLOW_CARE_TIPS, "今天指标有点偏高，过一两个小时再测一次看看");
+        }
         return pick(SEASON_STEADY.get(s), "今天健康记录平稳哦，注意季节养护，保持好心情");
+    }
+
+    /** 当天最差分级：有 high 记黄前先看 high，否则 medium，否则 low */
+    private String worstLevelOf(List<HealthRecord> today) {
+        if (today == null || today.isEmpty()) return "low";
+        boolean hasHigh = today.stream().anyMatch(r -> "high".equals(r.getRiskLevel()));
+        if (hasHigh) return "high";
+        boolean hasMedium = today.stream().anyMatch(r -> "medium".equals(r.getRiskLevel()));
+        return hasMedium ? "medium" : "low";
     }
 
     /** 通用温和的季节性温馨提示（兜底路径用） */
