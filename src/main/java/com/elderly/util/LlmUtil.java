@@ -1,14 +1,5 @@
 package com.elderly.util;
 
-import com.alibaba.dashscope.aigc.generation.Generation;
-import com.alibaba.dashscope.aigc.generation.GenerationParam;
-import com.alibaba.dashscope.aigc.generation.GenerationResult;
-import com.alibaba.dashscope.common.Message;
-import com.alibaba.dashscope.common.Role;
-import com.alibaba.dashscope.exception.ApiException;
-import com.alibaba.dashscope.exception.InputRequiredException;
-import com.alibaba.dashscope.exception.NoApiKeyException;
-import io.reactivex.Flowable;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,27 +7,29 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Flux;
 
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
  * 大模型统一调用工具（生产级优化版）
  * <p>
- * 优先使用阿里云通义千问（DashScope SDK 流式接口），
+ * 优先使用阿里云通义千问（OpenAI 兼容模式 HTTP 直连，支持全部新版模型），
  * 若未配置阿里云则降级到本地 Ollama（OpenAI 兼容接口）。
  * <p>
  * 优化要点：
- * 1. 支持 DashScope API Key（sk-xxx，推荐）和 Alibaba Cloud AK/SK 两种认证方式
- * 2. 复用 Generation 单例，避免每次调用创建新实例
- * 3. 增加温度（temperature）、采样（topP）、最大 token 数等模型参数控制
- * 4. 启动时自检并输出配置状态日志，便于排查问题
- * 5. 提供 healthCheck() 方法供健康检查接口调用
- * 6. 错误处理不泄露密钥信息，用户友好提示
+ * 1. 阿里云走 compatible-mode/v1/chat/completions（OpenAI 兼容端点），
+ *    新版模型（qwen3.x 等）不再依赖 DashScope 原生 Generation 端点，
+ *    避免 "url error, please check url!" 400 错误
+ * 2. 支持 DashScope API Key（sk-xxx）认证，兼容环境变量注入
+ * 3. 复用 WebClient 单例，增加温度（temperature）、采样（topP）、最大 token 数控制
+ * 4. Qwen3 系列支持通过 enable_thinking 关闭思考模式
+ * 5. 启动时自检并输出配置状态日志，便于排查问题
+ * 6. 提供 healthCheck() 方法供健康检查接口调用
+ * 7. 错误处理不泄露密钥信息，用户友好提示
  */
 @Component
 public class LlmUtil {
@@ -57,17 +50,18 @@ public class LlmUtil {
     @Value("${ai.aliyun.model:qwen-turbo}")
     private String aliModel;
 
+    /** DashScope OpenAI 兼容端点基地址 */
+    @Value("${ai.aliyun.base-url:https://dashscope.aliyuncs.com}")
+    private String aliBaseUrl;
+
     /**
      * 生成温度（0~1，越高越随机，越低越确定）
-     * 注意：DashScope SDK 2.16.2 的 temperature() 形参为 Float，此处必须声明为 float
      */
     @Value("${ai.aliyun.temperature:0.7}")
     private float temperature;
 
     /**
      * Top-P 采样（0~1，nucleus sampling，控制生成多样性）
-     * 注意：DashScope SDK 2.16.2 的 topP() 形参为 Double，此处必须声明为 double
-     * （这正是之前 float/double 反复冲突的根源：float 无法自动装箱为 Double）
      */
     @Value("${ai.aliyun.top-p:0.9}")
     private double topP;
@@ -79,7 +73,6 @@ public class LlmUtil {
     /**
      * 是否开启思考模式（仅 Qwen3 系列生效）。
      * 关闭后模型不再输出"思考过程"，回复更简洁、首字延迟更低，适合老人对话场景。
-     * 字段名语义：true=开启思考，false=关闭（默认）。
      */
     @Value("${ai.aliyun.enable-thinking:false}")
     private boolean enableThinking;
@@ -111,8 +104,8 @@ public class LlmUtil {
 
     // ==================== 运行时状态 ====================
 
-    /** 复用的 Generation 实例（线程安全） */
-    private Generation generation;
+    /** 阿里云 OpenAI 兼容端点客户端（复用单例，Authorization 头已内置） */
+    private WebClient aliyunClient;
 
     /** 阿里云是否已配置可用 */
     private volatile boolean aliConfigured = false;
@@ -130,7 +123,7 @@ public class LlmUtil {
     private volatile String keySource = "未配置";
 
     /**
-     * 启动时初始化：解析 API Key、创建 Generation 实例、输出配置状态日志。
+     * 启动时初始化：解析 API Key、创建 WebClient 实例、输出配置状态日志。
      */
     @PostConstruct
     public void init() {
@@ -138,10 +131,14 @@ public class LlmUtil {
 
         if (activeApiKey != null && !activeApiKey.isBlank()) {
             try {
-                generation = new Generation();
+                aliyunClient = WebClient.builder()
+                        .baseUrl(aliBaseUrl)
+                        .defaultHeader("Authorization", "Bearer " + activeApiKey)
+                        .build();
                 aliConfigured = true;
                 log.info("========================================");
-                log.info(" 阿里云通义千问 AI 服务已启用");
+                log.info(" 阿里云通义千问 AI 服务已启用（OpenAI 兼容模式）");
+                log.info("   端点    : {}/compatible-mode/v1/chat/completions", aliBaseUrl);
                 log.info("   模型    : {}", aliModel);
                 log.info("   温度    : {}", temperature);
                 log.info("   TopP    : {}", topP);
@@ -189,8 +186,6 @@ public class LlmUtil {
     /**
      * 解析实际使用的 API Key。
      * 优先级：application.properties 的 ai.aliyun.dashscope-api-key > 环境变量 DASHSCOPE_API_KEY。
-     * 支持环境变量是为了方便在运行环境（如 Ubuntu 虚拟机）通过 export 注入，
-     * 无需重新打包 jar 即可生效。
      * 注意：DashScope 通义千问只认百炼控制台发放的 API Key（sk-xxx 格式），
      * 阿里云 AccessKey Secret 不能当作 DashScope API Key 使用。
      */
@@ -289,73 +284,117 @@ public class LlmUtil {
     // ==================== 阿里云通义千问流式调用 ====================
 
     /**
-     * 阿里云通义千问流式调用 —— 使用 DashScope SDK 原生 Flowable 转 Reactor Flux。
-     * 优化：复用 Generation 单例，增加模型参数控制。
+     * 阿里云通义千问流式调用 —— 直连 OpenAI 兼容端点（compatible-mode/v1/chat/completions）。
+     * <p>
+     * 背景：DashScope 原生 Generation SDK 端点不支持 qwen3.x 等新版模型，
+     * 调用会报 400 InvalidParameter "url error, please check url!"。
+     * OpenAI 兼容端点覆盖全部在售模型，且 enable_thinking 等扩展参数直接放 body 即可。
      */
     private Flux<String> streamAliQwen(String systemPrompt, String userPrompt) {
         return Flux.defer(() -> {
-            try {
-                Message sysMsg = Message.builder()
-                        .role(Role.SYSTEM.getValue())
-                        .content(systemPrompt)
-                        .build();
-                Message userMsg = Message.builder()
-                        .role(Role.USER.getValue())
-                        .content(userPrompt)
-                        .build();
+            com.alibaba.fastjson2.JSONObject body = new com.alibaba.fastjson2.JSONObject();
+            body.put("model", aliModel);
+            body.put("stream", true);
 
-                // 注意：SDK 2.16.2 的链式构造器实际类型是 GenerationParam.GenerationParamBuilder
-                // （Lombok @SuperBuilder 生成，不存在 GenerationParam.Builder 这个内部类），
-                // 因此这里必须用 var 接收，不能显式写 GenerationParam.Builder
-                var paramBuilder = GenerationParam.builder()
-                        .apiKey(activeApiKey)
-                        .model(aliModel)
-                        .messages(List.of(sysMsg, userMsg))
-                        .resultFormat(GenerationParam.ResultFormat.MESSAGE)
-                        .incrementalOutput(true)  // 增量输出，避免拼接重复内容
-                        .temperature(temperature)  // 形参 Float，字段 float 自动装箱
-                        .topP(topP);               // 形参 Double，字段 double 自动装箱
+            com.alibaba.fastjson2.JSONArray messages = new com.alibaba.fastjson2.JSONArray();
+            com.alibaba.fastjson2.JSONObject sysMsg = new com.alibaba.fastjson2.JSONObject();
+            sysMsg.put("role", "system");
+            sysMsg.put("content", systemPrompt);
+            com.alibaba.fastjson2.JSONObject userMsg = new com.alibaba.fastjson2.JSONObject();
+            userMsg.put("role", "user");
+            userMsg.put("content", userPrompt);
+            messages.add(sysMsg);
+            messages.add(userMsg);
+            body.put("messages", messages);
 
-                // maxTokens 可能为 0（表示不限制），此时不设置
-                if (maxTokens > 0) {
-                    paramBuilder.maxTokens(maxTokens);
-                }
+            body.put("temperature", temperature);
+            body.put("top_p", topP);
+            if (maxTokens > 0) {
+                body.put("max_tokens", maxTokens);
+            }
 
-                // [诊断] 暂时不传 enable_thinking，先确认 qwen3.6-flash 基础调用是否通畅。
-                // 待定位完成后，再用正确方式恢复"关闭思考"（见 git 记录/对话）。
-                // if (!enableThinking && aliModel != null && aliModel.startsWith("qwen3")) {
-                //     paramBuilder.parameter("enable_thinking", Boolean.FALSE);
-                // }
+            // Qwen3 系列思考模式控制：默认关闭，避免老人看到"思考过程"。
+            // 兼容模式下 enable_thinking 直接作为 body 顶层字段传递。
+            if (!enableThinking && aliModel != null && aliModel.startsWith("qwen3")) {
+                body.put("enable_thinking", false);
+            }
 
-                GenerationParam param = paramBuilder.build();
-
-                Flowable<GenerationResult> flowable = generation.streamCall(param);
-
-                return Flux.from(flowable)
-                        .timeout(STREAM_TIMEOUT)
-                        .map(result -> {
-                            try {
-                                String content = result.getOutput()
-                                        .getChoices().get(0)
-                                        .getMessage().getContent();
-                                return content != null ? content : "";
-                            } catch (Exception e) {
-                                log.warn("解析千问流式片段异常: {}", e.getMessage());
-                                return "";
-                            }
-                        })
-                        .filter(s -> !s.isEmpty())
+            return aliyunClient.post()
+                    .uri("/compatible-mode/v1/chat/completions")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(body.toJSONString())
+                    .retrieve()
+                    .bodyToFlux(String.class)
+                    .timeout(STREAM_TIMEOUT)
+                    .map(this::extractDeltaContent)
+                    .filter(s -> !s.isEmpty())
                     .onErrorResume(e -> {
-                        log.error("千问流式调用异常: {}", e.getMessage(), e);
-                        lastCallError = e.getMessage();
+                        String msg = describeError(e);
+                        log.error("千问流式调用异常: {}", msg, e);
+                        lastCallError = msg;
                         return Flux.just(AI_FAIL_SENTINEL);
                     });
-
-            } catch (ApiException | NoApiKeyException | InputRequiredException e) {
-                log.error("千问调用初始化失败: {}", e.getMessage(), e);
-                return Flux.just(AI_FAIL_SENTINEL);
-            }
         });
+    }
+
+    /**
+     * 解析 OpenAI 兼容端点的 SSE 数据行，提取增量文本。
+     * 行格式："data: {...}" 或 "data: [DONE]"；对错误响应（含 error 字段）记录真实原因。
+     */
+    private String extractDeltaContent(String rawLine) {
+        String line = rawLine == null ? "" : rawLine.trim();
+        if (line.isEmpty() || "[DONE]".equals(line)) {
+            return "";
+        }
+        // SSE 前缀剥离（兼容 "data:" 紧贴与 "data: " 带空格两种格式）
+        if (line.startsWith("data:")) {
+            line = line.substring(5).trim();
+        }
+        if (line.isEmpty() || "[DONE]".equals(line)) {
+            return "";
+        }
+        try {
+            com.alibaba.fastjson2.JSONObject json = com.alibaba.fastjson2.JSON.parseObject(line);
+            if (json == null) {
+                return "";
+            }
+            // 错误响应：{"error":{"code":"...","message":"..."}}
+            com.alibaba.fastjson2.JSONObject error = json.getJSONObject("error");
+            if (error != null) {
+                String err = error.getString("code") + ": " + error.getString("message");
+                log.error("千问兼容端点返回错误: {}", err);
+                lastCallError = err;
+                return "";
+            }
+            com.alibaba.fastjson2.JSONArray choices = json.getJSONArray("choices");
+            if (choices != null && !choices.isEmpty()) {
+                com.alibaba.fastjson2.JSONObject delta = choices.getJSONObject(0).getJSONObject("delta");
+                if (delta != null) {
+                    String content = delta.getString("content");
+                    return content != null ? content : "";
+                }
+            }
+            return "";
+        } catch (Exception e) {
+            log.debug("跳过无法解析的千问SSE行: {}", line);
+            return "";
+        }
+    }
+
+    /**
+     * 把调用异常转成简明的错误描述（HTTP 状态 + 响应体片段），不含密钥。
+     */
+    private String describeError(Throwable e) {
+        if (e instanceof WebClientResponseException wcre) {
+            String body = wcre.getResponseBodyAsString();
+            if (body != null && body.length() > 300) {
+                body = body.substring(0, 300) + "…";
+            }
+            return "HTTP " + wcre.getStatusCode().value() + " " + wcre.getStatusText()
+                    + (body != null && !body.isBlank() ? " body=" + body : "");
+        }
+        String msg = e.getMessage();
+        return msg != null ? msg : e.getClass().getSimpleName();
     }
 
     // ==================== 本地 Ollama 流式调用 ====================
@@ -429,6 +468,7 @@ public class LlmUtil {
         Map<String, Object> aliyun = new LinkedHashMap<>();
         aliyun.put("configured", aliConfigured);
         aliyun.put("model", aliModel);
+        aliyun.put("endpoint", aliBaseUrl + "/compatible-mode/v1/chat/completions");
         aliyun.put("temperature", temperature);
         aliyun.put("topP", topP);
         aliyun.put("maxTokens", maxTokens);
