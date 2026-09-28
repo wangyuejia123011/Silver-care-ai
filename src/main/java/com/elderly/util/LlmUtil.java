@@ -120,6 +120,9 @@ public class LlmUtil {
     /** Ollama 是否已配置可用 */
     private volatile boolean ollamaConfigured = false;
 
+    /** 最近一次大模型调用异常信息（供健康检查/运维诊断，不泄露密钥） */
+    private volatile String lastCallError;
+
     /** 实际使用的 API Key（启动时确定，避免每次调用重复读取配置） */
     private volatile String activeApiKey;
 
@@ -318,12 +321,11 @@ public class LlmUtil {
                     paramBuilder.maxTokens(maxTokens);
                 }
 
-                // 关闭 Qwen3 思考模式：enable_thinking 仅 Qwen3 系列支持。
-                // 关闭后模型不再输出"思考过程"，回复更简洁、首字延迟更低，避免老人看到"嗯…让我想想"。
-                // 非 Qwen3 模型不传该参数，防止接口报不支持的参数。
-                if (!enableThinking && aliModel != null && aliModel.startsWith("qwen3")) {
-                    paramBuilder.parameter("enable_thinking", Boolean.FALSE);
-                }
+                // [诊断] 暂时不传 enable_thinking，先确认 qwen3.6-flash 基础调用是否通畅。
+                // 待定位完成后，再用正确方式恢复"关闭思考"（见 git 记录/对话）。
+                // if (!enableThinking && aliModel != null && aliModel.startsWith("qwen3")) {
+                //     paramBuilder.parameter("enable_thinking", Boolean.FALSE);
+                // }
 
                 GenerationParam param = paramBuilder.build();
 
@@ -343,10 +345,11 @@ public class LlmUtil {
                             }
                         })
                         .filter(s -> !s.isEmpty())
-                        .onErrorResume(e -> {
-                            log.error("千问流式调用异常: {}", e.getMessage(), e);
-                            return Flux.just(AI_FAIL_SENTINEL);
-                        });
+                    .onErrorResume(e -> {
+                        log.error("千问流式调用异常: {}", e.getMessage(), e);
+                        lastCallError = e.getMessage();
+                        return Flux.just(AI_FAIL_SENTINEL);
+                    });
 
             } catch (ApiException | NoApiKeyException | InputRequiredException e) {
                 log.error("千问调用初始化失败: {}", e.getMessage(), e);
@@ -451,6 +454,7 @@ public class LlmUtil {
         status.put("activeProvider", aliConfigured ? "aliyun" : (ollamaConfigured ? "ollama" : "none"));
 
         if (aliConfigured || ollamaConfigured) {
+            lastCallError = null;
             try {
                 String testReply = chatSync("你好");
                 boolean ok = testReply != null && !testReply.isBlank()
@@ -458,9 +462,13 @@ public class LlmUtil {
                 status.put("testResult", ok ? "ok" : "empty");
                 status.put("testReply", testReply != null && testReply.length() > 100
                         ? testReply.substring(0, 100) + "…" : testReply);
+                if (!ok && lastCallError != null) {
+                    status.put("lastError", lastCallError);
+                }
             } catch (Exception e) {
                 status.put("testResult", "failed");
                 status.put("testError", e.getMessage());
+                status.put("lastError", e.getMessage());
             }
         } else {
             status.put("testResult", "skipped");
@@ -475,6 +483,11 @@ public class LlmUtil {
      */
     public boolean isAiAvailable() {
         return aliConfigured || ollamaConfigured;
+    }
+
+    /** 供健康检查/运维读取最近一次调用异常（不含密钥） */
+    public String getLastCallError() {
+        return lastCallError;
     }
 
     // ==================== 工具方法 ====================

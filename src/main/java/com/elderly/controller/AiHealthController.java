@@ -67,6 +67,8 @@ public class AiHealthController {
         boolean speechOk = baiduSpeechUtil.isConfigured();
         String testResult = aliyunStatus.get("testResult") != null
                 ? String.valueOf(aliyunStatus.get("testResult")) : "skipped";
+        String lastErr = aliyunStatus.get("lastError") != null
+                ? String.valueOf(aliyunStatus.get("lastError")) : null;
         if (llmOk && !("ok".equals(testResult) || "skipped".equals(testResult))) {
             llmOk = false;
         }
@@ -79,9 +81,10 @@ public class AiHealthController {
         } else if (llmOk || speechOk) {
             overall = "partial";
             if (!llmOk) {
-                overallDesc = "AI对话不可用：" + ("failed".equals(testResult)
-                        ? "DashScope API Key 认证失败或网络异常，请检查密钥"
-                        : "请在 application.properties 中配置 ai.aliyun.dashscope-api-key");
+                overallDesc = "AI对话不可用：" + (lastErr != null ? lastErr
+                        : ("failed".equals(testResult)
+                                ? "DashScope API Key 认证失败或网络异常，请检查密钥"
+                                : "请在 application.properties 中配置 ai.aliyun.dashscope-api-key"));
             } else {
                 overallDesc = "部分AI服务可用（LLM: ok, 语音: missing）";
             }
