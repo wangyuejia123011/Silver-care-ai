@@ -39,6 +39,9 @@ public interface HealthRecordService {
     /** 清空用户健康记录 */
     int clearByUserId(Long userId);
 
+    /** 删除“今天 00:00 之前”的全部健康记录（每日凌晨重置用） */
+    int clearBeforeToday();
+
     /** 根据ID更新AI建议（流式回复完成后补录） */
     int updateAiAdviceById(Long id, String aiAdvice);
 }

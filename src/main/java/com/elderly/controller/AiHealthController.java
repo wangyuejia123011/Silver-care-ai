@@ -4,6 +4,7 @@ import com.elderly.common.R;
 import com.elderly.util.BaiduSpeechUtil;
 import com.elderly.util.LlmUtil;
 import jakarta.annotation.Resource;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.LinkedHashMap;
@@ -27,6 +28,10 @@ public class AiHealthController {
 
     @Resource
     private BaiduSpeechUtil baiduSpeechUtil;
+
+    /** 当前使用的阿里云模型名称（与 application.properties 的 ai.aliyun.model 保持一致） */
+    @Value("${ai.aliyun.model:qwen-turbo}")
+    private String aliModel;
 
     /**
      * AI 服务配置状态检查（不调用云服务，仅检查配置是否就绪）。
@@ -112,7 +117,7 @@ public class AiHealthController {
         Map<String, String> data = new LinkedHashMap<>();
         data.put("message", message);
         data.put("reply", reply);
-        data.put("model", "qwen-turbo");
+        data.put("model", aliModel);
 
         if (reply.isBlank() || reply.contains("暂未配置") || reply.contains("不可用")
                 || reply.contains("请检查密钥") || reply.contains("认证失败")) {

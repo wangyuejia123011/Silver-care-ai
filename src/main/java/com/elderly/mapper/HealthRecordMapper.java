@@ -41,6 +41,9 @@ public interface HealthRecordMapper {
     /** 根据用户ID清空健康记录 */
     int deleteByUserId(@Param("userId") Long userId);
 
+    /** 删除“今天 00:00 之前”的全部健康记录（用于每日凌晨重置，仅开发/测试库启用） */
+    int deleteBefore(@Param("todayStart") LocalDateTime todayStart);
+
     /** 根据ID更新AI建议（流式回复完成后补录） */
     int updateAiAdviceById(@Param("id") Long id, @Param("aiAdvice") String aiAdvice);
 }

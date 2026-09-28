@@ -137,6 +137,12 @@ public class HealthRecordServiceImpl implements HealthRecordService {
     }
 
     @Override
+    public int clearBeforeToday() {
+        LocalDateTime todayStart = LocalDateTime.now().toLocalDate().atStartOfDay();
+        return healthRecordMapper.deleteBefore(todayStart);
+    }
+
+    @Override
     public int updateAiAdviceById(Long id, String aiAdvice) {
         return healthRecordMapper.updateAiAdviceById(id, aiAdvice);
     }

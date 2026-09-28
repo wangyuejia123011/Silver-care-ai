@@ -76,6 +76,14 @@ public class LlmUtil {
     @Value("${ai.aliyun.max-tokens:1024}")
     private int maxTokens;
 
+    /**
+     * 是否开启思考模式（仅 Qwen3 系列生效）。
+     * 关闭后模型不再输出"思考过程"，回复更简洁、首字延迟更低，适合老人对话场景。
+     * 字段名语义：true=开启思考，false=关闭（默认）。
+     */
+    @Value("${ai.aliyun.enable-thinking:false}")
+    private boolean enableThinking;
+
     // ==================== 本地 Ollama 配置 ====================
 
     @Value("${ai.local.base-url:}")
@@ -135,6 +143,7 @@ public class LlmUtil {
                 log.info("   温度    : {}", temperature);
                 log.info("   TopP    : {}", topP);
                 log.info("   MaxTokens: {}", maxTokens);
+                log.info("   思考模式 : {}", enableThinking ? "开启" : "关闭(默认)");
                 log.info("   认证方式: DashScope API Key");
                 log.info("   Key来源 : {}", keySource);
                 log.info("   Key前缀 : {}***", maskKey(activeApiKey));
@@ -309,6 +318,13 @@ public class LlmUtil {
                     paramBuilder.maxTokens(maxTokens);
                 }
 
+                // 关闭 Qwen3 思考模式：enable_thinking 仅 Qwen3 系列支持。
+                // 关闭后模型不再输出"思考过程"，回复更简洁、首字延迟更低，避免老人看到"嗯…让我想想"。
+                // 非 Qwen3 模型不传该参数，防止接口报不支持的参数。
+                if (!enableThinking && aliModel != null && aliModel.startsWith("qwen3")) {
+                    paramBuilder.parameter("enable_thinking", Boolean.FALSE);
+                }
+
                 GenerationParam param = paramBuilder.build();
 
                 Flowable<GenerationResult> flowable = generation.streamCall(param);
@@ -413,6 +429,7 @@ public class LlmUtil {
         aliyun.put("temperature", temperature);
         aliyun.put("topP", topP);
         aliyun.put("maxTokens", maxTokens);
+        aliyun.put("enableThinking", enableThinking);
         if (aliConfigured) {
             aliyun.put("authMethod", "DashScope API Key");
             aliyun.put("keyPrefix", maskKey(activeApiKey) + "***");

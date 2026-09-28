@@ -82,6 +82,7 @@ com\elderly\mapper\MedicationReminderMapper.class
 com\elderly\controller\FraudAlertController.class
 com\elderly\mapper\HealthRecordMapper.class
 com\elderly\agent\HealthAgent$HealthIntent.class
+com\elderly\task\HealthDataCleanupTask.class
 com\elderly\entity\Caregiver.class
 com\elderly\agent\AgentResult.class
 com\elderly\SilverCareApplication.class
