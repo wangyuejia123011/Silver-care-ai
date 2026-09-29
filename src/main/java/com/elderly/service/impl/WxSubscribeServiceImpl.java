@@ -209,16 +209,29 @@ public class WxSubscribeServiceImpl implements WxSubscribeService {
             out.put("testSend", Map.of("skipped", true,
                     "reason", "wx_subscribe_record 表中没有真实 openId 的授权记录——前端授权上报可能未写入，导致推送在 hasAvailableAuth 处被拦截"));
         } else {
-            Map<String, Map<String, String>> data = new HashMap<>();
-            putDataItem(data, "number1", "180");
-            putDataItem(data, "number2", "110");
-            putDataItem(data, "number3", "90");
-            putDataItem(data, "number9", "6.1");
-            putDataItem(data, "number13", "37.0");
-            Map<String, Object> raw = sendSubscribeMessageRaw(testOpenId, defaultHealthAbnormalTemplateId,
-                    "pages/health/health", data);
-            raw.put("targetOpenId", mask(testOpenId));
-            out.put("testSend", raw);
+            // 实测 health-abnormal 模板（健康预警用的模板）
+            Map<String, Map<String, String>> healthData = new HashMap<>();
+            putDataItem(healthData, "number1", "180");
+            putDataItem(healthData, "number2", "110");
+            putDataItem(healthData, "number3", "90");
+            putDataItem(healthData, "number9", "6.1");
+            putDataItem(healthData, "number13", "37.0");
+            Map<String, Object> healthRaw = sendSubscribeMessageRaw(testOpenId, defaultHealthAbnormalTemplateId,
+                    "pages/health/health", healthData);
+            healthRaw.put("testTemplate", "health-abnormal");
+            healthRaw.put("targetOpenId", mask(testOpenId));
+            out.put("testSendHealthAbnormal", healthRaw);
+
+            // 实测 fraud-risk 模板（反诈用的模板，库里已有授权记录）
+            Map<String, Map<String, String>> fraudData = new HashMap<>();
+            putDataItem(fraudData, "thing6", "血压异常预警测试");
+            putDataItem(fraudData, "thing12", "中风险");
+            putDataItem(fraudData, "thing13", "请勿轻信陌生来电");
+            Map<String, Object> fraudRaw = sendSubscribeMessageRaw(testOpenId, defaultFraudRiskTemplateId,
+                    "pages/fraud/fraud", fraudData);
+            fraudRaw.put("testTemplate", "fraud-risk");
+            fraudRaw.put("targetOpenId", mask(testOpenId));
+            out.put("testSendFraudRisk", fraudRaw);
         }
         return out;
     }
