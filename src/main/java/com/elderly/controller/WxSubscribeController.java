@@ -46,4 +46,12 @@ public class WxSubscribeController {
         boolean ok = wxSubscribeService.hasAvailableAuth(openId, templateId);
         return R.success(Map.of("authorized", ok));
     }
+
+    /**
+     * 诊断推送链路：返回授权记录列表 + 对首个真实 openId 的实测发送结果（含微信原始 errcode/errmsg）。
+     */
+    @GetMapping("/diagnose")
+    public R<Map<String, Object>> diagnose() {
+        return R.success(wxSubscribeService.diagnose());
+    }
 }

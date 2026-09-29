@@ -3,6 +3,7 @@ package com.elderly.mapper;
 import com.elderly.entity.WxSubscribeRecord;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
 
@@ -24,4 +25,10 @@ public interface WxSubscribeRecordMapper {
      */
     WxSubscribeRecord selectLatestByOpenId(@Param("openId") String openId,
                                            @Param("templateId") String templateId);
+
+    /**
+     * 诊断用：最近 20 条授权记录
+     */
+    @Select("SELECT * FROM wx_subscribe_record ORDER BY id DESC LIMIT 20")
+    List<WxSubscribeRecord> selectRecent();
 }

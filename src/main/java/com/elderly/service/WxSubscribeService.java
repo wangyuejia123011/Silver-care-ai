@@ -27,6 +27,18 @@ public interface WxSubscribeService {
                                              Map<String, Map<String, String>> data);
 
     /**
+     * 诊断用：跳过授权检查（hasAvailableAuth）直接发送，返回微信原始响应。
+     */
+    Map<String, Object> sendSubscribeMessageRaw(String openId, String templateId, String page,
+                                                Map<String, Map<String, String>> data);
+
+    /**
+     * 诊断推送链路：返回 wx_subscribe_record 授权记录列表，
+     * 并对表中首个真实 openId 直接实测一次发送，返回微信原始响应（errcode/errmsg）。
+     */
+    Map<String, Object> diagnose();
+
+    /**
      * 用 wx.login 拿到的 code 换取用户 openId（微信 code2Session）。
      *
      * @param code 前端 uni.login 返回的临时登录凭证 code

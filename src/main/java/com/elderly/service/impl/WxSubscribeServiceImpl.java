@@ -15,7 +15,9 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -95,6 +97,17 @@ public class WxSubscribeServiceImpl implements WxSubscribeService {
     @Override
     public Map<String, Object> sendSubscribeMessage(String openId, String templateId, String page,
                                                     Map<String, Map<String, String>> data) {
+        return doSend(openId, templateId, page, data, false);
+    }
+
+    @Override
+    public Map<String, Object> sendSubscribeMessageRaw(String openId, String templateId, String page,
+                                                       Map<String, Map<String, String>> data) {
+        return doSend(openId, templateId, page, data, true);
+    }
+
+    private Map<String, Object> doSend(String openId, String templateId, String page,
+                                       Map<String, Map<String, String>> data, boolean skipAuthCheck) {
         Map<String, Object> result = new HashMap<>();
         result.put("success", false);
 
@@ -106,8 +119,8 @@ public class WxSubscribeServiceImpl implements WxSubscribeService {
             result.put("errMsg", "接收者 openId 为空");
             return result;
         }
-        if (!hasAvailableAuth(openId, templateId)) {
-            result.put("errMsg", "用户未授权该订阅消息模板");
+        if (!skipAuthCheck && !hasAvailableAuth(openId, templateId)) {
+            result.put("errMsg", "用户未授权该订阅消息模板（hasAvailableAuth=false，推送在授权检查处被拦截，未真正调用微信）");
             return result;
         }
 
@@ -143,7 +156,10 @@ public class WxSubscribeServiceImpl implements WxSubscribeService {
             result.put("errCode", errcode);
             result.put("errMsg", errmsg);
 
-            updateSendRecord(openId, templateId, success, errmsg);
+            // 诊断用的 raw 发送不写发送记录，避免污染一次性订阅额度
+            if (!skipAuthCheck) {
+                updateSendRecord(openId, templateId, success, errmsg);
+            }
 
             // access_token 过期时清空缓存，下次重试
             if (errcode == 40001 || errcode == 42001) {
@@ -152,9 +168,73 @@ public class WxSubscribeServiceImpl implements WxSubscribeService {
         } catch (RestClientException e) {
             log.error("调用微信订阅消息接口异常: {}", e.getMessage());
             result.put("errMsg", "调用微信接口异常: " + e.getMessage());
-            updateSendRecord(openId, templateId, false, e.getMessage());
+            if (!skipAuthCheck) {
+                updateSendRecord(openId, templateId, false, e.getMessage());
+            }
         }
         return result;
+    }
+
+    @Override
+    public Map<String, Object> diagnose() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        List<Map<String, Object>> authList = new ArrayList<>();
+        String testOpenId = null;
+        try {
+            List<WxSubscribeRecord> records = wxSubscribeRecordMapper.selectRecent();
+            int count = records == null ? 0 : records.size();
+            out.put("authRecordCount", count);
+            if (records != null) {
+                for (WxSubscribeRecord r : records) {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("openId", mask(r.getOpenId()));
+                    m.put("templateId", maskTemplate(r.getTemplateId()));
+                    m.put("authType", r.getAuthType());
+                    m.put("remainCount", r.getRemainCount());
+                    m.put("sendStatus", r.getSendStatus());
+                    m.put("failReason", r.getFailReason());
+                    m.put("authTime", r.getAuthTime());
+                    authList.add(m);
+                    if (testOpenId == null && r.getOpenId() != null && isRealOpenId(r.getOpenId())) {
+                        testOpenId = r.getOpenId();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            out.put("authQueryError", e.getMessage());
+        }
+        out.put("authRecords", authList);
+
+        if (testOpenId == null) {
+            out.put("testSend", Map.of("skipped", true,
+                    "reason", "wx_subscribe_record 表中没有真实 openId 的授权记录——前端授权上报可能未写入，导致推送在 hasAvailableAuth 处被拦截"));
+        } else {
+            Map<String, Map<String, String>> data = new HashMap<>();
+            putDataItem(data, "number1", "180");
+            putDataItem(data, "number2", "110");
+            putDataItem(data, "number3", "90");
+            putDataItem(data, "number9", "6.1");
+            putDataItem(data, "number13", "37.0");
+            Map<String, Object> raw = sendSubscribeMessageRaw(testOpenId, defaultHealthAbnormalTemplateId,
+                    "pages/health/health", data);
+            raw.put("targetOpenId", mask(testOpenId));
+            out.put("testSend", raw);
+        }
+        return out;
+    }
+
+    private String mask(String s) {
+        if (s == null || s.length() <= 8) return s;
+        return s.substring(0, 4) + "****" + s.substring(s.length() - 4);
+    }
+
+    private boolean isRealOpenId(String s) {
+        return s != null && s.startsWith("o") && s.length() >= 20 && !s.toLowerCase().contains("demo");
+    }
+
+    private String maskTemplate(String t) {
+        if (t == null) return null;
+        return t.length() > 6 ? t.substring(0, 4) + "..." + t.substring(t.length() - 3) : t;
     }
 
     @Override
