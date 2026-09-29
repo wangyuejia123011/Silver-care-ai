@@ -49,6 +49,14 @@ public class WxSubscribeServiceImpl implements WxSubscribeService {
     @Value("${wx.miniapp.miniprogram-state:formal}")
     private String miniprogramState;
 
+    /**
+     * 微信开放接口域名。
+     * 默认 https 公网地址；部署在微信云托管时必须改为 http://api.weixin.qq.com（内网直连），
+     * 否则 https 证书在云托管内网网关下校验失败（PKIX path building failed）。
+     */
+    @Value("${wx.api-base-url:https://api.weixin.qq.com}")
+    private String wxApiBaseUrl;
+
     @Resource
     private WxSubscribeRecordMapper wxSubscribeRecordMapper;
 
@@ -109,7 +117,7 @@ public class WxSubscribeServiceImpl implements WxSubscribeService {
             return result;
         }
 
-        String url = "https://api.weixin.qq.com/cgi-bin/message/subscribe/send?access_token=" + token;
+        String url = wxApiBaseUrl + "/cgi-bin/message/subscribe/send?access_token=" + token;
 
         Map<String, Object> body = new HashMap<>();
         body.put("touser", openId);
@@ -161,7 +169,7 @@ public class WxSubscribeServiceImpl implements WxSubscribeService {
             result.put("errMsg", "未配置微信小程序 appId/appSecret，无法换取 openId");
             return result;
         }
-        String url = "https://api.weixin.qq.com/sns/jscode2session?appid=" + appId
+        String url = wxApiBaseUrl + "/sns/jscode2session?appid=" + appId
                 + "&secret=" + appSecret + "&js_code=" + code + "&grant_type=authorization_code";
         try {
             ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
@@ -278,7 +286,7 @@ public class WxSubscribeServiceImpl implements WxSubscribeService {
                 return null;
             }
             String url = String.format(
-                    "https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=%s&secret=%s",
+                    wxApiBaseUrl + "/cgi-bin/token?grant_type=client_credential&appid=%s&secret=%s",
                     appId, appSecret);
             try {
                 ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
