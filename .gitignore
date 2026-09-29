@@ -1,0 +1,17 @@
+# 构建产物（禁止提交，体积大且每次构建都变）
+target/
+build/
+out/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# 日志与临时文件
+*.log
+logs/
+.DS_Store

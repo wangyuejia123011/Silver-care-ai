@@ -33,6 +33,14 @@ public class AiHealthController {
     @Value("${ai.aliyun.model:qwen-turbo}")
     private String aliModel;
 
+    /** 当前实际生效的订阅消息模板 ID（含环境变量覆盖后的真实值，用于排查 20001 不存在问题） */
+    @Value("${wx.miniapp.template.fraud-risk:}")
+    private String fraudRiskTemplate;
+
+    /** 当前实际生效的健康异常模板 ID */
+    @Value("${wx.miniapp.template.health-abnormal:}")
+    private String healthAbnormalTemplate;
+
     /**
      * AI 服务配置状态检查（不调用云服务，仅检查配置是否就绪）。
      * <p>
@@ -60,6 +68,12 @@ public class AiHealthController {
         result.put("chroma", Map.of(
                 "note", "Chroma向量库状态需通过实际对话验证",
                 "collections", "elder_health_guide, elder_fraud_case"
+        ));
+
+        // 订阅消息模板 ID 当前生效值（用于排查 requestSubscribeMessage 20001 模板不存在）
+        result.put("wxTemplates", Map.of(
+                "fraud-risk", fraudRiskTemplate,
+                "health-abnormal", healthAbnormalTemplate
         ));
 
         // 总体状态（如果配置看似就绪但实测失败，降级为 partial 并给出明确提示）
