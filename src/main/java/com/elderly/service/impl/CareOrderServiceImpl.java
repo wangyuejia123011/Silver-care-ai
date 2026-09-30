@@ -43,6 +43,11 @@ public class CareOrderServiceImpl implements CareOrderService {
             params.put("demand", order.getDemand() != null ? order.getDemand() : "老人需要帮助");
             params.put("health", order.getHealthSummary() != null ? order.getHealthSummary() : "暂无健康数据");
             params.put("elderly", buildElderlyProfile(order.getUserId(), order.getElderlyName()));
+            // 设备结论由调度侧场景分类判定，AI 只许照抄、禁止自行判断
+            boolean needDevice = Integer.valueOf(1).equals(order.getNeedMedicalDevice());
+            params.put("needDevice", needDevice
+                    ? "需要，护工将携带血压计等医疗设备上门"
+                    : "不需要，这是日常照料或助浴类服务");
             String prompt = promptUtil.getPrompt("order_generate/order_generate.txt", params);
             String content = llmUtil.chatSync(prompt);
             order.setOrderContent(sanitizeOrderContent(content));
