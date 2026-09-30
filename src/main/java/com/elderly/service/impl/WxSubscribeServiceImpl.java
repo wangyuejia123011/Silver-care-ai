@@ -119,8 +119,11 @@ public class WxSubscribeServiceImpl implements WxSubscribeService {
             result.put("errMsg", "接收者 openId 为空");
             return result;
         }
-        if (!skipAuthCheck && !hasAvailableAuth(openId, templateId)) {
-            result.put("errMsg", "用户未授权该订阅消息模板（hasAvailableAuth=false，推送在授权检查处被拦截，未真正调用微信）");
+        // 不再依赖本地库 wx_subscribe_record 的授权记录做硬性拦截：
+        // 微信订阅消息由微信侧自行校验授权状态（未授权会返回 43101，不会骚扰用户），
+        // 用户即便在微信设置里手动开启、本地库无记录，也应能收到。仅拦截明显非真实的占位 openId。
+        if (!skipAuthCheck && !isRealOpenId(openId)) {
+            result.put("errMsg", "接收者 openId 非真实值（疑似占位），不进行订阅消息推送");
             return result;
         }
 
