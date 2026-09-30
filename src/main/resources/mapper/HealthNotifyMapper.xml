@@ -53,6 +53,11 @@
         WHERE caregiver_id = #{caregiverId} ORDER BY create_time DESC
     </select>
 
+    <select id="selectByElderlyUserId" resultMap="notifyMap">
+        SELECT <include refid="cols"/> FROM health_notify
+        WHERE elderly_user_id = #{elderlyUserId} ORDER BY create_time DESC
+    </select>
+
     <select id="countUnreadByOpenId" resultType="int">
         SELECT COUNT(*) FROM health_notify
         WHERE receiver_open_id = #{openId} AND status = 'unread'
@@ -61,5 +66,10 @@
     <select id="countUnreadByCaregiverId" resultType="int">
         SELECT COUNT(*) FROM health_notify
         WHERE caregiver_id = #{caregiverId} AND status = 'unread'
+    </select>
+
+    <select id="countUnreadByElderlyUserId" resultType="int">
+        SELECT COUNT(*) FROM health_notify
+        WHERE elderly_user_id = #{elderlyUserId} AND status = 'unread'
     </select>
 </mapper>

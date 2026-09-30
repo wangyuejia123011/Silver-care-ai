@@ -22,6 +22,12 @@ public interface HealthNotifyService {
     /** 按护工ID查询通知收件箱 */
     List<HealthNotify> inboxByCaregiverId(Long caregiverId);
 
+    /** 按老人ID查询通知收件箱（含其绑定家属/护工的全部通知，用于老人端通知中心） */
+    List<HealthNotify> inboxByElderlyUserId(Long elderlyUserId);
+
+    /** 统计某老人绑定关系下的未读通知数 */
+    int countUnreadByElderlyUserId(Long elderlyUserId);
+
     /** 根据ID查询通知详情 */
     HealthNotify getById(Long id);
 

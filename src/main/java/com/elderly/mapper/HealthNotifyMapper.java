@@ -19,6 +19,10 @@ public interface HealthNotifyMapper {
 
     List<HealthNotify> selectByCaregiverId(@Param("caregiverId") Long caregiverId);
 
+    List<HealthNotify> selectByElderlyUserId(@Param("elderlyUserId") Long elderlyUserId);
+
+    int countUnreadByElderlyUserId(@Param("elderlyUserId") Long elderlyUserId);
+
     int countUnreadByOpenId(@Param("openId") String openId);
 
     int countUnreadByCaregiverId(@Param("caregiverId") Long caregiverId);

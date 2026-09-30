@@ -137,6 +137,18 @@ public class HealthNotifyServiceImpl implements HealthNotifyService {
     }
 
     @Override
+    public List<HealthNotify> inboxByElderlyUserId(Long elderlyUserId) {
+        if (elderlyUserId == null) return new ArrayList<>();
+        return healthNotifyMapper.selectByElderlyUserId(elderlyUserId);
+    }
+
+    @Override
+    public int countUnreadByElderlyUserId(Long elderlyUserId) {
+        if (elderlyUserId == null) return 0;
+        return healthNotifyMapper.countUnreadByElderlyUserId(elderlyUserId);
+    }
+
+    @Override
     public HealthNotify getById(Long id) {
         return healthNotifyMapper.selectById(id);
     }

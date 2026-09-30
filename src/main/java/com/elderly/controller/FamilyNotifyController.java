@@ -71,14 +71,24 @@ public class FamilyNotifyController {
 
     @GetMapping("/notify/inbox")
     public R<List<HealthNotify>> inbox(@RequestParam(required = false) String openId,
-                                       @RequestParam(required = false) Long caregiverId) {
+                                       @RequestParam(required = false) Long caregiverId,
+                                       @RequestParam(required = false) Long elderlyUserId) {
         if (openId != null && !openId.isBlank()) {
             return R.success(healthNotifyService.inboxByOpenId(openId));
         }
         if (caregiverId != null) {
             return R.success(healthNotifyService.inboxByCaregiverId(caregiverId));
         }
-        return R.fail(400, "请传入 openId 或 caregiverId");
+        if (elderlyUserId != null) {
+            return R.success(healthNotifyService.inboxByElderlyUserId(elderlyUserId));
+        }
+        return R.fail(400, "请传入 openId / caregiverId / elderlyUserId");
+    }
+
+    /** 老人端通知中心：按老人ID拉取其绑定家属/护工的全部通知 */
+    @GetMapping("/notify/inbox/elderly/{elderlyUserId}")
+    public R<List<HealthNotify>> inboxByElderly(@PathVariable Long elderlyUserId) {
+        return R.success(healthNotifyService.inboxByElderlyUserId(elderlyUserId));
     }
 
     @GetMapping("/notify/{id}")
@@ -98,15 +108,26 @@ public class FamilyNotifyController {
 
     @GetMapping("/notify/unread")
     public R<Map<String, Integer>> unread(@RequestParam(required = false) String openId,
-                                          @RequestParam(required = false) Long caregiverId) {
+                                          @RequestParam(required = false) Long caregiverId,
+                                          @RequestParam(required = false) Long elderlyUserId) {
         Map<String, Integer> data = new HashMap<>();
         int count = 0;
         if (openId != null && !openId.isBlank()) {
             count = healthNotifyService.countUnreadByOpenId(openId);
         } else if (caregiverId != null) {
             count = healthNotifyService.countUnreadByCaregiverId(caregiverId);
+        } else if (elderlyUserId != null) {
+            count = healthNotifyService.countUnreadByElderlyUserId(elderlyUserId);
         }
         data.put("count", count);
+        return R.success(data);
+    }
+
+    /** 老人端通知中心未读数 */
+    @GetMapping("/notify/unread/elderly/{elderlyUserId}")
+    public R<Map<String, Integer>> unreadByElderly(@PathVariable Long elderlyUserId) {
+        Map<String, Integer> data = new HashMap<>();
+        data.put("count", healthNotifyService.countUnreadByElderlyUserId(elderlyUserId));
         return R.success(data);
     }
 }
