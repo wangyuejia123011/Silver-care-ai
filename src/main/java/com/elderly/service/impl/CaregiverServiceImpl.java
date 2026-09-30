@@ -3,6 +3,7 @@ package com.elderly.service.impl;
 import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONArray;
 import com.elderly.entity.Caregiver;
+import com.elderly.entity.DispatchContext;
 import com.elderly.mapper.CaregiverMapper;
 import com.elderly.service.CaregiverService;
 import jakarta.annotation.Resource;
@@ -33,39 +34,85 @@ public class CaregiverServiceImpl implements CaregiverService {
     }
 
     /**
-     * 加权匹配算法（文档2.0核心算法）：
-     * 第一步 技能过滤：筛选 skills 包含所需技能的护工集合A；
-     * 第二步 区域过滤：在A中优先筛选 area 与老人地址匹配的护工集合B（无匹配则回退到A）；
-     * 第三步 负载均衡：按 current_order_count 升序排列，取负载最小的第一名。
+     * 场景化加权匹配算法（Agent5 调度核心）：
+     * 在"在岗护工"集合中，按以下维度逐人打分，取总分最高者：
+     *   1) 技能匹配（所需技能属于该护工技能标签）→ +40；
+     *   2) 性别匹配（助浴等场景要求与老人同性别）→ +80；
+     *   3) 医疗设备匹配（健康类要求携带设备，能带设备 → +100，不能带 → -200 重罚）；
+     *   4) 区域/距离匹配（护工负责区域命中老人地址，作为距离远近的代理）→ +60；
+     *   5) 负载均衡（当前接单数越低越好）→ 减去 currentOrderCount。
+     * 某维度无要求（如日常照料无需设备、无需性别）则该项不计分。
+     * 始终保证"叫得到人"：即使无人完全满足，也会返回分最高者。
      */
     @Override
-    public Caregiver matchBestCaregiver(String skill, String address) {
-        // 第一步：技能过滤（无技能要求时取全部在岗护工）
-        List<Caregiver> candidates = StringUtils.hasText(skill)
-                ? caregiverMapper.selectBySkill(skill)
-                : caregiverMapper.selectAll();
-
-        if (candidates == null || candidates.isEmpty()) {
-            // 技能过滤后无人可选，回退到全部在岗护工（不能让老人叫不到人）
-            log.warn("技能[{}]无可上岗护工，回退全量在岗护工", skill);
-            candidates = caregiverMapper.selectAll();
-        }
+    public Caregiver matchBestCaregiver(DispatchContext ctx, String address) {
+        List<Caregiver> candidates = caregiverMapper.selectAll(); // 在岗，已按负载升序
         if (candidates == null || candidates.isEmpty()) {
             return null;
         }
 
-        // 第二步：区域过滤（护工的负责区域出现在老人地址中，或老人地址包含区域名）
-        List<Caregiver> areaMatched = candidates.stream()
-                .filter(c -> c.getArea() != null && address != null
-                        && (address.contains(c.getArea()) || c.getArea().contains("全部")))
-                .toList();
-        List<Caregiver> pool = areaMatched.isEmpty() ? candidates : areaMatched;
-        log.info("加权调度：技能过滤后{}人，区域过滤后{}人", candidates.size(), pool.size());
+        // 第一步：技能硬过滤（无技能要求则不过滤；无匹配则回退全量，保证叫得到人）
+        if (ctx.getSkill() != null && !ctx.getSkill().isBlank()) {
+            List<Caregiver> bySkill = candidates.stream()
+                    .filter(c -> parseSkills(c).contains(ctx.getSkill()))
+                    .toList();
+            if (!bySkill.isEmpty()) {
+                candidates = bySkill;
+            } else {
+                log.warn("技能[{}]无可上岗护工，放宽至全量在岗护工", ctx.getSkill());
+            }
+        }
 
-        // 第三步：负载均衡（当前接单数升序，取第一名）
-        return pool.stream()
-                .min(Comparator.comparingInt(c -> c.getCurrentOrderCount() == null ? 0 : c.getCurrentOrderCount()))
-                .orElse(null);
+        // 第二步：加权打分
+        Caregiver best = null;
+        int bestScore = Integer.MIN_VALUE;
+        for (Caregiver c : candidates) {
+            int score = 0;
+
+            // 技能匹配
+            if (ctx.getSkill() != null && !ctx.getSkill().isBlank()
+                    && parseSkills(c).contains(ctx.getSkill())) {
+                score += 40;
+            }
+
+            // 性别匹配（助浴等需与老人同性别）
+            if (ctx.getRequireGender() != null && !ctx.getRequireGender().isBlank()
+                    && ctx.getRequireGender().equals(c.getGender())) {
+                score += 80;
+            }
+
+            // 医疗设备匹配（健康类需携带设备）
+            boolean canDevice = c.getCanCarryDevice() != null && c.getCanCarryDevice() == 1;
+            if (ctx.isNeedDevice()) {
+                if (canDevice) {
+                    score += 100;
+                } else {
+                    score -= 200; // 健康类但无法带设备，重罚
+                }
+            }
+
+            // 区域/距离匹配（护工负责区域命中老人地址，作为距离远近的代理信号）
+            if (c.getArea() != null && address != null
+                    && (address.contains(c.getArea()) || c.getArea().contains("全部"))) {
+                score += 60;
+            }
+
+            // 负载均衡：当前接单数越低越好
+            score -= (c.getCurrentOrderCount() == null ? 0 : c.getCurrentOrderCount());
+
+            if (score > bestScore) {
+                bestScore = score;
+                best = c;
+            }
+        }
+
+        if (best != null) {
+            log.info("加权调度：场景={}, 候选{}人, 选中={}(技能={}, 性别={}, 带设备={}, 区域={}, 负载={})",
+                    ctx.getCategory(), candidates.size(), best.getName(),
+                    ctx.getSkill(), best.getGender(),
+                    best.getCanCarryDevice(), best.getArea(), best.getCurrentOrderCount());
+        }
+        return best;
     }
 
     /** 解析护工skills JSON字符串 */

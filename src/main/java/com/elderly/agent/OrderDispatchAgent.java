@@ -2,6 +2,7 @@ package com.elderly.agent;
 
 import com.elderly.entity.CareOrder;
 import com.elderly.entity.Caregiver;
+import com.elderly.entity.DispatchContext;
 import com.elderly.entity.ElderlyUser;
 import com.elderly.entity.HealthRecord;
 import com.elderly.service.CareOrderService;
@@ -58,7 +59,6 @@ public class OrderDispatchAgent {
         CareOrder order = new CareOrder();
         order.setUserId(userId);
         order.setDemand(demand);
-        order.setOrderType(emergency ? "emergency" : "daily");
 
         // 1. 补全老人档案信息
         ElderlyUser user = userId != null ? userService.getById(userId) : null;
@@ -86,33 +86,43 @@ public class OrderDispatchAgent {
             log.warn("查询健康摘要失败: {}", e.getMessage());
         }
 
-        // 3. AI生成工单内容（order_generate.txt）
+        // 3. 场景化分类：根据需求文本 + 老人性别/健康情况，判定所需技能、是否带设备、护工性别要求
+        DispatchContext ctx = classify(demand, order.getHealthSummary(), emergency,
+                user != null ? user.getGender() : null);
+        order.setOrderType(categoryToOrderType(ctx.getCategory()));
+        order.setNeedMedicalDevice(ctx.isNeedDevice() ? 1 : 0);
+
+        // 4. AI生成工单内容（order_generate.txt）
         order = careOrderService.createOrder(order);
 
-        // 4. 技能提取（本地别名匹配，无需调用大模型，保证派单速度）
-        String skill = extractSkill(demand);
-        if (emergency && skill == null) {
-            skill = "急救";
-        }
-
-        // 5. 加权匹配：技能过滤 → 区域过滤 → 负载均衡
-        Caregiver best = caregiverService.matchBestCaregiver(skill, order.getAddress());
+        // 5. 场景化加权匹配：技能 → 性别(助浴) → 医疗设备(健康类) → 区域/距离 → 负载均衡
+        Caregiver best = caregiverService.matchBestCaregiver(ctx, order.getAddress());
         if (best != null) {
             careOrderService.assignCaregiver(order.getId(), best.getId());
             order.setCaregiverId(best.getId());
             order.setHandlerName(best.getName());
             order.setStatus("assigned");
-            log.info("工单#{} 已指派给 {}（技能={}, 区域={}, 当前负载={}）",
-                    order.getId(), best.getName(), skill, best.getArea(), best.getCurrentOrderCount());
+            log.info("工单#{} 已指派给 {}（场景={}, 技能={}, 性别={}, 带设备={}, 区域={}, 当前负载={}）",
+                    order.getId(), best.getName(), ctx.getCategory(), ctx.getSkill(), best.getGender(),
+                    best.getCanCarryDevice(), best.getArea(), best.getCurrentOrderCount());
         }
 
-        // 6. 组装给老人的口语化回复
+        // 6. 组装给老人的口语化回复（依据场景给出差异化的说明）
         String reply;
         if (best != null) {
-            reply = String.format("好的，已经帮您安排好了。护工%s正在赶来的路上，请您先原地休息，预计15分钟内到达。%s",
-                    best.getName(),
-                    order.getNeedMedicalDevice() != null && order.getNeedMedicalDevice() == 1
-                            ? "护工会携带血压计等设备上门。" : "");
+            StringBuilder sb = new StringBuilder("好的，已经帮您安排好了。护工");
+            sb.append(best.getName()).append("正在赶来的路上，请您先休息，预计15分钟内到达。");
+            if (ctx.isNeedDevice()) {
+                sb.append("这是健康相关服务，护工会携带血压计等医疗设备上门。");
+            }
+            if (ctx.getRequireGender() != null && best.getGender() != null
+                    && ctx.getRequireGender().equals(best.getGender())) {
+                sb.append("已为您安排与老人同性别的护工，方便助浴照料。");
+            }
+            if ("DAILY".equals(ctx.getCategory())) {
+                sb.append("这是日常照料，无需携带医疗设备。");
+            }
+            reply = sb.toString();
         } else {
             reply = "好的，您的需求已经登记，社区会尽快安排护工与您联系，请保持电话畅通。";
         }
@@ -131,6 +141,72 @@ public class OrderDispatchAgent {
             }
         }
         return null;
+    }
+
+    /** 场景分类关键字集合 */
+    private static final java.util.Set<String> EMERGENCY_KW = java.util.Set.of(
+            "急救", "120", "昏迷", "晕倒", "晕过去", "中风", "心梗", "高危", "危急", "摔倒", "跌到", "抽搐", "叫救护车");
+    private static final java.util.Set<String> BATH_KW = java.util.Set.of(
+            "助浴", "洗澡", "洗浴", "沐浴", "擦浴", "洗个澡");
+    private static final java.util.Set<String> HEALTH_KW = java.util.Set.of(
+            "血压", "血糖", "心率", "体温", "测量", "检测", "监测", "医疗", "护理", "陪诊", "康复",
+            "吃药", "用药", "输液", "换药", "复查", "体检");
+    private static final java.util.Set<String> DEVICE_KW = java.util.Set.of(
+            "血压", "血糖", "心率", "体温", "测量", "检测", "监测", "医疗", "急救",
+            "吃药", "用药", "输液", "换药");
+    private static final java.util.Set<String> DAILY_KW = java.util.Set.of(
+            "打扫", "保洁", "卫生", "换灯泡", "灯泡", "修理", "维修", "买菜", "做饭",
+            "取药", "散步", "遛弯", "陪伴", "聊天", "洗衣", "倒垃圾");
+
+    /**
+     * 把老人需求翻译成可调度约束（场景分类）。
+     * - 紧急/健康：需携带医疗设备（血压计等）上门；
+     * - 助浴：护工性别应与老人一致；
+     * - 日常照料：无需设备。
+     */
+    public DispatchContext classify(String demand, String healthSummary, boolean emergency, String elderlyGender) {
+        DispatchContext ctx = new DispatchContext();
+        ctx.setEmergency(emergency);
+        ctx.setSkill(extractSkill(demand));
+        String d = demand == null ? "" : demand;
+
+        if (emergency || containsAny(d, EMERGENCY_KW)) {
+            ctx.setCategory("EMERGENCY");
+            if (ctx.getSkill() == null) ctx.setSkill("急救");
+            ctx.setNeedDevice(true);
+        } else if (containsAny(d, BATH_KW)) {
+            ctx.setCategory("BATH");
+            ctx.setRequireGender(elderlyGender); // 与老人同性别
+            ctx.setNeedDevice(false);
+            if (ctx.getSkill() == null) ctx.setSkill("助浴");
+        } else if (containsAny(d, HEALTH_KW)) {
+            ctx.setCategory("HEALTH");
+            if (ctx.getSkill() == null) ctx.setSkill("康复");
+            boolean deviceByDemand = containsAny(d, DEVICE_KW);
+            boolean deviceByHealth = healthSummary != null && healthSummary.contains("高危");
+            ctx.setNeedDevice(deviceByDemand || deviceByHealth);
+        } else {
+            ctx.setCategory("DAILY");
+            ctx.setNeedDevice(false);
+            if (ctx.getSkill() == null) ctx.setSkill("保洁");
+        }
+        return ctx;
+    }
+
+    private boolean containsAny(String text, java.util.Set<String> keywords) {
+        if (text == null) return false;
+        for (String k : keywords) {
+            if (text.contains(k)) return true;
+        }
+        return false;
+    }
+
+    private String categoryToOrderType(String category) {
+        return switch (category) {
+            case "EMERGENCY" -> "emergency";
+            case "HEALTH" -> "health";
+            default -> "daily";
+        };
     }
 
     /** 查询护工排行（数据看板用） */

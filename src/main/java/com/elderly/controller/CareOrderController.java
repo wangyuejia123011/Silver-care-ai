@@ -5,8 +5,11 @@ import com.elderly.common.R;
 import com.elderly.dto.OrderRequest;
 import com.elderly.entity.CareOrder;
 import com.elderly.entity.Caregiver;
+import com.elderly.entity.DispatchContext;
+import com.elderly.entity.ElderlyUser;
 import com.elderly.service.CareOrderService;
 import com.elderly.service.CaregiverService;
+import com.elderly.service.ElderlyUserService;
 import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +28,8 @@ public class CareOrderController {
     private CareOrderService careOrderService;
     @Resource
     private CaregiverService caregiverService;
+    @Resource
+    private ElderlyUserService elderlyUserService;
     @Resource
     private OrderDispatchAgent orderDispatchAgent;
 
@@ -103,11 +108,17 @@ public class CareOrderController {
         order.setOrderType(req.getOrderType() != null ? req.getOrderType() : "daily");
         order.setDemand(req.getDemand());
 
+        // 场景化分类：根据老人性别/需求，判定所需技能、是否带设备、护工性别要求
+        ElderlyUser u = req.getUserId() != null ? elderlyUserService.getById(req.getUserId()) : null;
+        String elderlyGender = u != null ? u.getGender() : null;
+        DispatchContext ctx = orderDispatchAgent.classify(req.getDemand(), null,
+                "emergency".equals(order.getOrderType()), elderlyGender);
+        order.setNeedMedicalDevice(ctx.isNeedDevice() ? 1 : 0);
+
         CareOrder created = careOrderService.createOrder(order);
 
         // 加权匹配最佳护工并指派（内部含WebSocket实时推送）
-        Caregiver best = caregiverService.matchBestCaregiver(
-                orderDispatchAgent.extractSkill(req.getDemand()), order.getAddress());
+        Caregiver best = caregiverService.matchBestCaregiver(ctx, order.getAddress());
         if (best != null) {
             careOrderService.assignCaregiver(created.getId(), best.getId());
             created.setCaregiverId(best.getId());

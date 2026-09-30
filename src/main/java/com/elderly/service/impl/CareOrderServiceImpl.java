@@ -47,12 +47,15 @@ public class CareOrderServiceImpl implements CareOrderService {
             String content = llmUtil.chatSync(prompt);
             order.setOrderContent(sanitizeOrderContent(content));
 
-            // 简单判断是否需要医疗设备
-            if (content != null && (content.contains("血压") || content.contains("血糖")
-                    || content.contains("医疗") || content.contains("检查"))) {
-                order.setNeedMedicalDevice(1);
-            } else {
-                order.setNeedMedicalDevice(0);
+            // 是否需要医疗设备：优先采用调度上下文已判定的结果（来自场景分类），
+            // 仅在调用方未预判时才用内容关键词兜底。
+            if (order.getNeedMedicalDevice() == null) {
+                if (content != null && (content.contains("血压") || content.contains("血糖")
+                        || content.contains("医疗") || content.contains("检查"))) {
+                    order.setNeedMedicalDevice(1);
+                } else {
+                    order.setNeedMedicalDevice(0);
+                }
             }
         } catch (Exception e) {
             log.warn("AI工单生成失败，使用原始需求: {}", e.getMessage());

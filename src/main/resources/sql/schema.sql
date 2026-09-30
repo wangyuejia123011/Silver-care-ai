@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS caregiver (
     current_order_count  INT          DEFAULT 0 COMMENT '当前接单数（负载均衡依据）',
     total_order_count    INT          DEFAULT 0 COMMENT '累计接单数（日报排行依据）',
     status               VARCHAR(10)  DEFAULT 'on' COMMENT '状态：on-在岗 off-休息',
+    can_carry_device     TINYINT      DEFAULT 0 COMMENT '能否携带医疗设备上门：0-否 1-是',
     create_time          DATETIME     DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     INDEX idx_area (area),
     INDEX idx_status (status)
@@ -97,12 +98,12 @@ CREATE TABLE IF NOT EXISTS care_order (
 -- ----------------------------
 -- 演示种子数据：5名护工（不同技能/区域/负载，用于展示加权调度算法）
 -- ----------------------------
-INSERT INTO caregiver (name, phone, gender, age, skills, area, current_order_count, total_order_count, status) VALUES
-('王强',   '13800000001', '男', 35, '["急救","康复"]',    '3号楼', 2, 87,  'on'),
-('李桂芳', '13800000002', '女', 42, '["助浴","保洁"]',    '3号楼', 0, 120, 'on'),
-('张建军', '13800000003', '男', 38, '["康复","陪诊"]',    '东区',  1, 65,  'on'),
-('刘小梅', '13800000004', '女', 29, '["陪诊","保洁"]',    '西区',  3, 43,  'on'),
-('陈师傅', '13800000005', '男', 45, '["急救","康复","陪诊"]', '东区', 1, 156, 'on');
+INSERT INTO caregiver (name, phone, gender, age, skills, area, current_order_count, total_order_count, status, can_carry_device) VALUES
+('王强',   '13800000001', '男', 35, '["急救","康复"]',    '3号楼', 2, 87,  'on', 1),
+('李桂芳', '13800000002', '女', 42, '["助浴","保洁"]',    '3号楼', 0, 120, 'on', 0),
+('张建军', '13800000003', '男', 38, '["康复","陪诊"]',    '东区',  1, 65,  'on', 1),
+('刘小梅', '13800000004', '女', 29, '["陪诊","保洁"]',    '西区',  3, 43,  'on', 0),
+('陈师傅', '13800000005', '男', 45, '["急救","康复","陪诊"]', '东区', 1, 156, 'on', 1);
 
 -- ----------------------------
 -- 5. 反诈预警记录表

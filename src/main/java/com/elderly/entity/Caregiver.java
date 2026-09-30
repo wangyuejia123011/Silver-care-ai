@@ -38,6 +38,9 @@ public class Caregiver {
     /** 状态：on-在岗 off-休息 */
     private String status;
 
+    /** 能否携带医疗设备上门：0-否 1-是（健康类工单加权匹配依据） */
+    private Integer canCarryDevice;
+
     /** 创建时间 */
     private LocalDateTime createTime;
 }

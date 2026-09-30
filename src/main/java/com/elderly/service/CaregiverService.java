@@ -1,6 +1,7 @@
 package com.elderly.service;
 
 import com.elderly.entity.Caregiver;
+import com.elderly.entity.DispatchContext;
 import java.util.List;
 
 public interface CaregiverService {
@@ -12,13 +13,14 @@ public interface CaregiverService {
     Caregiver getById(Long id);
 
     /**
-     * Agent5 加权调度核心算法：技能过滤 → 区域过滤 → 负载均衡
+     * Agent5 场景化加权调度核心算法：
+     * 技能匹配 → 性别匹配(助浴等) → 医疗设备匹配(健康类) → 区域/距离匹配 → 负载均衡
      *
-     * @param skill   需要的技能标签（如"康复"），为空则不过滤技能
-     * @param address 老人地址（用于区域匹配，护工area包含在地址中优先）
+     * @param ctx     场景化派单上下文（含所需技能、是否带设备、要求护工性别、紧急程度）
+     * @param address 老人地址（用于区域/距离匹配，护工area出现在地址中优先）
      * @return 最佳护工；无人可选时返回null
      */
-    Caregiver matchBestCaregiver(String skill, String address);
+    Caregiver matchBestCaregiver(DispatchContext ctx, String address);
 
     /** 新增护工 */
     Caregiver addCaregiver(Caregiver caregiver);
