@@ -150,10 +150,12 @@ public class OrderDispatchAgent {
             "助浴", "洗澡", "洗浴", "沐浴", "擦浴", "洗个澡");
     private static final java.util.Set<String> HEALTH_KW = java.util.Set.of(
             "血压", "血糖", "心率", "体温", "测量", "检测", "监测", "医疗", "护理", "陪诊", "康复",
-            "吃药", "用药", "输液", "换药", "复查", "体检");
+            "吃药", "用药", "输液", "换药", "复查", "体检",
+            "头晕", "头疼", "头痛", "发烧", "发热", "心慌", "胸闷", "不舒服", "难受", "乏力", "恶心");
     private static final java.util.Set<String> DEVICE_KW = java.util.Set.of(
             "血压", "血糖", "心率", "体温", "测量", "检测", "监测", "医疗", "急救",
-            "吃药", "用药", "输液", "换药");
+            "吃药", "用药", "输液", "换药",
+            "头晕", "头疼", "头痛", "发烧", "发热", "心慌", "胸闷");
     private static final java.util.Set<String> DAILY_KW = java.util.Set.of(
             "打扫", "保洁", "卫生", "换灯泡", "灯泡", "修理", "维修", "买菜", "做饭",
             "取药", "散步", "遛弯", "陪伴", "聊天", "洗衣", "倒垃圾");
@@ -182,7 +184,7 @@ public class OrderDispatchAgent {
         } else if (containsAny(d, HEALTH_KW)) {
             ctx.setCategory("HEALTH");
             if (ctx.getSkill() == null) ctx.setSkill("康复");
-            boolean deviceByDemand = containsAny(d, DEVICE_KW);
+            boolean deviceByDemand = containsAny(d, DEVICE_KW) || "急救".equals(ctx.getSkill());
             boolean deviceByHealth = healthSummary != null && healthSummary.contains("高危");
             ctx.setNeedDevice(deviceByDemand || deviceByHealth);
         } else {
@@ -201,10 +203,13 @@ public class OrderDispatchAgent {
         return false;
     }
 
+    /**
+     * 工单类别只分两大类：日常照料(daily) / 健康服务(health)。
+     * 紧急求助属健康服务的极端情况，归入 health；助浴属日常照料。
+     */
     private String categoryToOrderType(String category) {
         return switch (category) {
-            case "EMERGENCY" -> "emergency";
-            case "HEALTH" -> "health";
+            case "EMERGENCY", "HEALTH" -> "health";
             default -> "daily";
         };
     }
