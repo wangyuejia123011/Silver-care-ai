@@ -32,6 +32,8 @@ public class CareOrderServiceImpl implements CareOrderService {
     private PromptUtil promptUtil;
     @Resource
     private OrderWebSocketHandler wsHandler;
+    @Resource
+    private com.elderly.service.ElderlyUserService elderlyUserService;
 
     @Override
     public CareOrder createOrder(CareOrder order) {
@@ -40,6 +42,7 @@ public class CareOrderServiceImpl implements CareOrderService {
             Map<String, String> params = new HashMap<>();
             params.put("demand", order.getDemand() != null ? order.getDemand() : "老人需要帮助");
             params.put("health", order.getHealthSummary() != null ? order.getHealthSummary() : "暂无健康数据");
+            params.put("elderly", buildElderlyProfile(order.getUserId(), order.getElderlyName()));
             String prompt = promptUtil.getPrompt("order_generate/order_generate.txt", params);
             String content = llmUtil.chatSync(prompt);
             order.setOrderContent(sanitizeOrderContent(content));
@@ -123,6 +126,30 @@ public class CareOrderServiceImpl implements CareOrderService {
     @Override
     public int clearByUserId(Long userId) {
         return careOrderMapper.deleteByUserId(userId);
+    }
+
+    /**
+     * 拼装老人档案摘要（供提示词 {elderly} 占位）：
+     * 服务对象字段必须对应这里的信息，而不是"家中老人"这类泛称。
+     */
+    private String buildElderlyProfile(Long userId, String fallbackName) {
+        try {
+            if (userId != null) {
+                com.elderly.entity.ElderlyUser u = elderlyUserService.getById(userId);
+                if (u != null) {
+                    StringBuilder sb = new StringBuilder();
+                    sb.append(u.getName() != null ? u.getName() : (fallbackName != null ? fallbackName : "未知"));
+                    if (u.getGender() != null) sb.append("，").append(u.getGender());
+                    if (u.getAge() != null) sb.append("，").append(u.getAge()).append("岁");
+                    if (u.getAddress() != null && !u.getAddress().isBlank()) sb.append("，住址：").append(u.getAddress());
+                    if (u.getRemark() != null && !u.getRemark().isBlank()) sb.append("，档案备注：").append(u.getRemark());
+                    return sb.toString();
+                }
+            }
+        } catch (Exception e) {
+            log.warn("查询老人档案失败: {}", e.getMessage());
+        }
+        return fallbackName != null ? fallbackName : "暂无档案信息";
     }
 
     /**
