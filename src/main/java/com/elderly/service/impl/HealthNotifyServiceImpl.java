@@ -168,6 +168,15 @@ public class HealthNotifyServiceImpl implements HealthNotifyService {
         return healthNotifyMapper.countUnreadByCaregiverId(caregiverId);
     }
 
+    @Override
+    public int clearByScope(String openId, Long caregiverId, Long elderlyUserId) {
+        boolean hasOpenId = openId != null && !openId.isBlank();
+        if (!hasOpenId && caregiverId == null && elderlyUserId == null) {
+            return 0;
+        }
+        return healthNotifyMapper.deleteByScope(hasOpenId ? openId : null, caregiverId, elderlyUserId);
+    }
+
     private String buildContent(String elderlyName, HealthRecord record, String voiceText) {
         StringBuilder sb = new StringBuilder();
         sb.append(elderlyName == null ? "老人" : elderlyName).append("语音上报健康情况。");

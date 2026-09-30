@@ -28,6 +28,12 @@ public interface HealthNotifyService {
     /** 统计某老人绑定关系下的未读通知数 */
     int countUnreadByElderlyUserId(Long elderlyUserId);
 
+    /**
+     * 按范围删除通知：优先 openId，其次 caregiverId，最后 elderlyUserId。
+     * 三者均为空时返回 0（防止误删全表）。
+     */
+    int clearByScope(String openId, Long caregiverId, Long elderlyUserId);
+
     /** 根据ID查询通知详情 */
     HealthNotify getById(Long id);
 

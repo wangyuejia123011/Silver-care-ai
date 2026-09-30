@@ -26,4 +26,8 @@ public interface HealthNotifyMapper {
     int countUnreadByOpenId(@Param("openId") String openId);
 
     int countUnreadByCaregiverId(@Param("caregiverId") Long caregiverId);
+
+    int deleteByScope(@Param("openId") String openId,
+                      @Param("caregiverId") Long caregiverId,
+                      @Param("elderlyUserId") Long elderlyUserId);
 }

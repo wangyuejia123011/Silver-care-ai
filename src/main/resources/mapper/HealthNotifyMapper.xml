@@ -72,4 +72,16 @@
         SELECT COUNT(*) FROM health_notify
         WHERE elderly_user_id = #{elderlyUserId} AND status = 'unread'
     </select>
+
+    <delete id="deleteByScope">
+        DELETE FROM health_notify
+        <where>
+            <choose>
+                <when test="openId != null and openId != ''">receiver_open_id = #{openId}</when>
+                <when test="caregiverId != null">caregiver_id = #{caregiverId}</when>
+                <when test="elderlyUserId != null">elderly_user_id = #{elderlyUserId}</when>
+                <otherwise>1 = 0</otherwise>
+            </choose>
+        </where>
+    </delete>
 </mapper>

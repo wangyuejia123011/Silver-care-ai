@@ -106,6 +106,21 @@ public class FamilyNotifyController {
         return R.success("已读");
     }
 
+    /** 按范围清空通知记录（openId / caregiverId / elderlyUserId 至少传一个，防止误删全表） */
+    @DeleteMapping("/notify/clear")
+    public R<Map<String, Integer>> clear(@RequestParam(required = false) String openId,
+                                         @RequestParam(required = false) Long caregiverId,
+                                         @RequestParam(required = false) Long elderlyUserId) {
+        boolean hasAny = (openId != null && !openId.isBlank()) || caregiverId != null || elderlyUserId != null;
+        if (!hasAny) {
+            return R.fail(400, "请传入 openId / caregiverId / elderlyUserId");
+        }
+        int deleted = healthNotifyService.clearByScope(openId, caregiverId, elderlyUserId);
+        Map<String, Integer> data = new HashMap<>();
+        data.put("deleted", deleted);
+        return R.success("已删除 " + deleted + " 条记录", data);
+    }
+
     @GetMapping("/notify/unread")
     public R<Map<String, Integer>> unread(@RequestParam(required = false) String openId,
                                           @RequestParam(required = false) Long caregiverId,
