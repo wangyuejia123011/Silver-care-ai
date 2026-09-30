@@ -322,11 +322,13 @@ public class WxSubscribeServiceImpl implements WxSubscribeService {
 
         String page = "pages/health/health";
         Map<String, Map<String, String>> data = new HashMap<>();
-        putDataItem(data, "number1", systolicPressure);
-        putDataItem(data, "number2", diastolicPressure);
-        putDataItem(data, "number3", heartRate);
-        putDataItem(data, "number9", bloodSugar);
-        putDataItem(data, "number13", temperature);
+        // 微信 number 类型字段只接受纯数字（含小数点），null/空/"-" 等占位或非数字内容会报
+        // "data.numberX.value invalid" 导致整条消息被拒。统一清洗为非数字字符过滤后的合法值。
+        putDataItem(data, "number1", cleanNumber(systolicPressure));
+        putDataItem(data, "number2", cleanNumber(diastolicPressure));
+        putDataItem(data, "number3", cleanNumber(heartRate));
+        putDataItem(data, "number9", cleanNumber(bloodSugar));
+        putDataItem(data, "number13", cleanNumber(temperature));
 
         return sendSubscribeMessage(openId, templateId, page, data);
     }
@@ -340,6 +342,28 @@ public class WxSubscribeServiceImpl implements WxSubscribeService {
         }
         item.put("value", v);
         data.put(key, item);
+    }
+
+    /**
+     * 清洗微信订阅消息 number 类型字段值：仅保留数字与小数点，其余字符（单位、中文、占位符"-"等）剔除；
+     * 空结果或非数字返回 "0"，避免微信报 data.numberX.value invalid 而整条拒收。
+     */
+    private String cleanNumber(String v) {
+        if (v == null) return "0";
+        StringBuilder sb = new StringBuilder();
+        for (char c : v.toCharArray()) {
+            if ((c >= '0' && c <= '9') || c == '.') {
+                sb.append(c);
+            }
+        }
+        String s = sb.toString();
+        if (s.isEmpty()) return "0";
+        if (s.startsWith(".")) s = "0" + s;
+        int firstDot = s.indexOf('.');
+        if (firstDot != -1 && s.indexOf('.', firstDot + 1) != -1) {
+            s = s.substring(0, firstDot + 1) + s.substring(firstDot + 1).replace(".", "");
+        }
+        return s;
     }
 
     @Override
