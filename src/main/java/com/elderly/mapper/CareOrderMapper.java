@@ -30,6 +30,15 @@ public interface CareOrderMapper {
     /** 查询某护工名下的工单 */
     List<CareOrder> selectByCaregiverId(@Param("caregiverId") Long caregiverId);
 
+    /** 统计某护工今日接单数 */
+    int countTodayByCaregiverId(@Param("caregiverId") Long caregiverId);
+
+    /** 按状态统计某护工名下的工单数（如 assigned / done） */
+    int countStatusByCaregiverId(@Param("caregiverId") Long caregiverId, @Param("status") String status);
+
+    /** 查询某护工近期服务过的老人（去重，最多 limit 条） */
+    List<CareOrder> selectElderlyByCaregiverId(@Param("caregiverId") Long caregiverId, @Param("limit") int limit);
+
     /** 指派工单给护工（状态置为assigned） */
     int assignCaregiver(@Param("id") Long id, @Param("caregiverId") Long caregiverId,
                         @Param("handlerName") String handlerName);

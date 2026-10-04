@@ -41,6 +41,24 @@ public class Caregiver {
     /** 能否携带医疗设备上门：0-否 1-是（健康类工单加权匹配依据） */
     private Integer canCarryDevice;
 
+    /** 头像图片地址 */
+    private String avatar;
+
+    /** 个人简介/详细介绍 */
+    private String bio;
+
+    /** 从业年限 */
+    private Integer experienceYears;
+
+    /** 服务评分 */
+    private java.math.BigDecimal rating;
+
+    /** 评价人数 */
+    private Integer ratingCount;
+
+    /** 可服务时间，如「周一至周日 8:00-18:00」 */
+    private String serviceTime;
+
     /** 创建时间 */
     private LocalDateTime createTime;
 }

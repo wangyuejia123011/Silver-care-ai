@@ -65,6 +65,12 @@ CREATE TABLE IF NOT EXISTS caregiver (
     total_order_count    INT          DEFAULT 0 COMMENT '累计接单数（日报排行依据）',
     status               VARCHAR(10)  DEFAULT 'on' COMMENT '状态：on-在岗 off-休息',
     can_carry_device     TINYINT      DEFAULT 0 COMMENT '能否携带医疗设备上门：0-否 1-是',
+    avatar               VARCHAR(500) COMMENT '头像图片地址',
+    bio                  VARCHAR(1000) COMMENT '个人简介/详细介绍',
+    experience_years     INT          COMMENT '从业年限',
+    rating               DECIMAL(3,1) DEFAULT 5.0 COMMENT '服务评分',
+    rating_count         INT          DEFAULT 0 COMMENT '评价人数',
+    service_time         VARCHAR(100) COMMENT '可服务时间',
     create_time          DATETIME     DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     INDEX idx_area (area),
     INDEX idx_status (status)

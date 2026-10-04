@@ -71,6 +71,27 @@
         ORDER BY CASE status WHEN 'assigned' THEN 0 ELSE 1 END, create_time DESC
     </select>
 
+    <!-- 护工详情页统计：按状态计数 -->
+    <select id="countStatusByCaregiverId" resultType="int">
+        SELECT COUNT(*) FROM care_order
+        WHERE caregiver_id = #{caregiverId} AND status = #{status}
+    </select>
+
+    <!-- 护工详情页统计：今日工单数 -->
+    <select id="countTodayByCaregiverId" resultType="int">
+        SELECT COUNT(*) FROM care_order
+        WHERE caregiver_id = #{caregiverId} AND DATE(create_time) = CURDATE()
+    </select>
+
+    <!-- 护工详情页：服务过的老人（去重取最新几条） -->
+    <select id="selectElderlyByCaregiverId" resultMap="orderMap">
+        SELECT <include refid="cols"/> FROM care_order
+        WHERE caregiver_id = #{caregiverId} AND elderly_name IS NOT NULL AND elderly_name != ''
+        GROUP BY elderly_name
+        ORDER BY MAX(create_time) DESC
+        LIMIT #{limit}
+    </select>
+
     <update id="assignCaregiver">
         UPDATE care_order SET status = 'assigned', caregiver_id = #{caregiverId},
                               handler_name = #{handlerName}, assigned_time = NOW(),

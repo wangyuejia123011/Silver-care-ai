@@ -2,8 +2,11 @@ package com.elderly.service.impl;
 
 import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONArray;
+import com.elderly.dto.CaregiverProfile;
+import com.elderly.entity.CareOrder;
 import com.elderly.entity.Caregiver;
 import com.elderly.entity.DispatchContext;
+import com.elderly.mapper.CareOrderMapper;
 import com.elderly.mapper.CaregiverMapper;
 import com.elderly.service.CaregiverService;
 import jakarta.annotation.Resource;
@@ -13,7 +16,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class CaregiverServiceImpl implements CaregiverService {
@@ -23,6 +28,9 @@ public class CaregiverServiceImpl implements CaregiverService {
     @Resource
     private CaregiverMapper caregiverMapper;
 
+    @Resource
+    private CareOrderMapper careOrderMapper;
+
     @Override
     public List<Caregiver> listAll() {
         return caregiverMapper.selectAll();
@@ -31,6 +39,76 @@ public class CaregiverServiceImpl implements CaregiverService {
     @Override
     public Caregiver getById(Long id) {
         return caregiverMapper.selectById(id);
+    }
+
+    /**
+     * 护工详情：先查扩展档案（avatar/bio/评分等），
+     * 若线上库还没跑升级 SQL 导致字段不存在，自动降级成基础档案，页面不至于白屏。
+     */
+    @Override
+    public CaregiverProfile getProfile(Long id) {
+        Caregiver caregiver = null;
+        try {
+            caregiver = caregiverMapper.selectProfileById(id);
+        } catch (Exception e) {
+            log.warn("护工[{}]扩展字段查询失败，降级为基础档案：{}", id, e.getMessage());
+            caregiver = caregiverMapper.selectById(id);
+        }
+        if (caregiver == null) {
+            return null;
+        }
+
+        CaregiverProfile profile = new CaregiverProfile();
+        profile.setCaregiver(caregiver);
+        profile.setSkills(parseSkills(caregiver));
+        profile.setStatusText("on".equals(caregiver.getStatus()) ? "在岗接单中" : "休息中");
+
+        Map<String, Object> stats = new HashMap<>();
+        stats.put("todayOrders", countSafe(() -> careOrderMapper.countTodayByCaregiverId(id)));
+        stats.put("pendingOrders", countSafe(() -> careOrderMapper.countStatusByCaregiverId(id, "assigned")));
+        stats.put("doneOrders", countSafe(() -> careOrderMapper.countStatusByCaregiverId(id, "done")));
+        stats.put("totalOrders", caregiver.getTotalOrderCount() == null ? 0 : caregiver.getTotalOrderCount());
+        stats.put("currentOrders", caregiver.getCurrentOrderCount() == null ? 0 : caregiver.getCurrentOrderCount());
+        try {
+            List<CareOrder> orders = careOrderMapper.selectElderlyByCaregiverId(id, 6);
+            stats.put("elderlyNames", orders.stream()
+                    .map(CareOrder::getElderlyName)
+                    .filter(StringUtils::hasText)
+                    .toList());
+        } catch (Exception e) {
+            stats.put("elderlyNames", List.of());
+        }
+        profile.setStats(stats);
+        return profile;
+    }
+
+    /** 统计计数兜底：出任何问题都按 0 处理，不能让详情页挂掉 */
+    private int countSafe(java.util.function.Supplier<Integer> supplier) {
+        try {
+            Integer n = supplier.get();
+            return n == null ? 0 : n;
+        } catch (Exception e) {
+            log.warn("护工统计查询失败：{}", e.getMessage());
+            return 0;
+        }
+    }
+
+    @Override
+    public void updateCaregiver(Caregiver caregiver) {
+        if (caregiver == null || caregiver.getId() == null) {
+            return;
+        }
+        if (StringUtils.hasText(caregiver.getSkills())
+                && !caregiver.getSkills().trim().startsWith("[")) {
+            // 允许前端传逗号分隔的技能，自动转为JSON数组
+            String[] parts = caregiver.getSkills().split("[,，]");
+            JSONArray arr = new JSONArray();
+            for (String p : parts) {
+                if (!p.isBlank()) arr.add(p.trim());
+            }
+            caregiver.setSkills(arr.toJSONString());
+        }
+        caregiverMapper.updateProfile(caregiver);
     }
 
     /**

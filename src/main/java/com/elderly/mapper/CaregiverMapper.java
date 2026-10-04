@@ -11,8 +11,14 @@ public interface CaregiverMapper {
     /** 新增护工 */
     int insert(Caregiver caregiver);
 
-    /** 根据ID查询 */
+    /** 根据ID查询（基础字段，线上库未升级时也能用） */
     Caregiver selectById(@Param("id") Long id);
+
+    /** 根据ID查询完整档案（含头像/简介/评分等扩展列，线上库未升级时会抛异常，由Service降级） */
+    Caregiver selectProfileById(@Param("id") Long id);
+
+    /** 更新护工扩展资料（只更新非空的扩展字段） */
+    int updateProfile(Caregiver caregiver);
 
     /** 查询全部在岗护工 */
     List<Caregiver> selectAll();

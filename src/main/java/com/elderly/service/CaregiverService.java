@@ -1,5 +1,6 @@
 package com.elderly.service;
 
+import com.elderly.dto.CaregiverProfile;
 import com.elderly.entity.Caregiver;
 import com.elderly.entity.DispatchContext;
 import java.util.List;
@@ -11,6 +12,15 @@ public interface CaregiverService {
 
     /** 根据ID查询 */
     Caregiver getById(Long id);
+
+    /**
+     * 护工详情（详情页面用）：基础档案 + 技能数组 + 服务统计 + 近期服务过的老人。
+     * 线上库若还没跑升级 SQL（扩展列不存在），内部自动降级为基础档案，不会抛错。
+     */
+    CaregiverProfile getProfile(Long id);
+
+    /** 更新护工资料（只更新传入的非空字段） */
+    void updateCaregiver(Caregiver caregiver);
 
     /**
      * Agent5 场景化加权调度核心算法：

@@ -1,6 +1,7 @@
 package com.elderly.controller;
 
 import com.elderly.common.R;
+import com.elderly.dto.CaregiverProfile;
 import com.elderly.entity.CareOrder;
 import com.elderly.entity.Caregiver;
 import com.elderly.service.CareOrderService;
@@ -39,6 +40,34 @@ public class CaregiverController {
             return R.fail(404, "护工不存在");
         }
         return R.success(caregiver);
+    }
+
+    /**
+     * 护工详细档案（详情页专用）：基础档案 + 技能数组 + 服务统计 + 近期服务过的老人。
+     * 放在 /{id}/profile 而不是 /{id}，是为了不改老接口的返回结构，老调用方不受影响。
+     */
+    @GetMapping("/{id}/profile")
+    public R<CaregiverProfile> profile(@PathVariable Long id) {
+        CaregiverProfile profile = caregiverService.getProfile(id);
+        if (profile == null) {
+            return R.fail(404, "护工不存在");
+        }
+        return R.success(profile);
+    }
+
+    /** 更新护工资料（护工自己维护头像/简介/从业年限/可服务时间等） */
+    @PutMapping("/{id}")
+    public R<Caregiver> update(@PathVariable Long id, @RequestBody Caregiver body) {
+        if (body == null) {
+            return R.fail(400, "更新内容不能为空");
+        }
+        Caregiver exists = caregiverService.getById(id);
+        if (exists == null) {
+            return R.fail(404, "护工不存在");
+        }
+        body.setId(id);
+        caregiverService.updateCaregiver(body);
+        return R.success("更新成功", caregiverService.getById(id));
     }
 
     /** 新增护工（管理端 / 护工端自主注册） */

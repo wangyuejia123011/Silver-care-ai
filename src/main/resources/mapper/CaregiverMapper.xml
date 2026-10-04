@@ -15,11 +15,24 @@
         <result property="totalOrderCount" column="total_order_count"/>
         <result property="status" column="status"/>
         <result property="canCarryDevice" column="can_carry_device"/>
+        <result property="avatar" column="avatar"/>
+        <result property="bio" column="bio"/>
+        <result property="experienceYears" column="experience_years"/>
+        <result property="rating" column="rating"/>
+        <result property="ratingCount" column="rating_count"/>
+        <result property="serviceTime" column="service_time"/>
         <result property="createTime" column="create_time"/>
     </resultMap>
 
     <sql id="cols">
         id, name, phone, gender, age, skills, area, current_order_count, total_order_count, status, can_carry_device, create_time
+    </sql>
+
+    <!-- 扩展列清单：仅详情页使用。线上库若还没跑 upgrade-caregiver-profile.sql，
+         该 select 会因 Unknown column 报错，Service 层捕获后降级为基础档案，不会 500。 -->
+    <sql id="colsWithProfile">
+        id, name, phone, gender, age, skills, area, current_order_count, total_order_count, status, can_carry_device,
+        avatar, bio, experience_years, rating, rating_count, service_time, create_time
     </sql>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
@@ -30,6 +43,29 @@
     <select id="selectById" resultMap="caregiverMap">
         SELECT <include refid="cols"/> FROM caregiver WHERE id = #{id}
     </select>
+
+    <select id="selectProfileById" resultMap="caregiverMap">
+        SELECT <include refid="colsWithProfile"/> FROM caregiver WHERE id = #{id}
+    </select>
+
+    <update id="updateProfile">
+        UPDATE caregiver
+        <set>
+            <if test="name != null and name != ''">name = #{name},</if>
+            <if test="phone != null and phone != ''">phone = #{phone},</if>
+            <if test="gender != null and gender != ''">gender = #{gender},</if>
+            <if test="age != null">age = #{age},</if>
+            <if test="skills != null and skills != ''">skills = #{skills},</if>
+            <if test="area != null and area != ''">area = #{area},</if>
+            <if test="status != null and status != ''">status = #{status},</if>
+            <if test="canCarryDevice != null">can_carry_device = #{canCarryDevice},</if>
+            <if test="avatar != null and avatar != ''">avatar = #{avatar},</if>
+            <if test="bio != null and bio != ''">bio = #{bio},</if>
+            <if test="experienceYears != null">experience_years = #{experienceYears},</if>
+            <if test="serviceTime != null and serviceTime != ''">service_time = #{serviceTime},</if>
+        </set>
+        WHERE id = #{id}
+    </update>
 
     <select id="selectAll" resultMap="caregiverMap">
         SELECT <include refid="cols"/> FROM caregiver
