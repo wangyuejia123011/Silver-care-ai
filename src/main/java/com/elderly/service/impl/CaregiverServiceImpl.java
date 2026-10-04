@@ -164,7 +164,28 @@ public class CaregiverServiceImpl implements CaregiverService {
             log.warn("当前无在服务时间内的护工，放宽至全量在岗护工（{}人）", all.size());
         }
 
-        // 第一步：技能硬过滤（无技能要求则不过滤；无匹配则回退全量，保证叫得到人）
+        // 第一步半：性别硬过滤（仅 strength=must，即隐私类需求如助浴/擦浴/剪指甲）。
+        // 护工性别由 AI 按需求语义判定（见 OrderDispatchAgent.applyGenderRequirement）。
+        // prefer（体力类如换灯泡）不在这里过滤，只在打分时加分 ——
+        // 否则万一没有男护工，老人就彻底叫不到人了。
+        if (ctx.getRequireGender() != null && !ctx.getRequireGender().isBlank()
+                && "must".equals(ctx.getGenderStrength())) {
+            List<Caregiver> byGender = candidates.stream()
+                    .filter(c -> ctx.getRequireGender().equals(c.getGender()))
+                    .toList();
+            if (!byGender.isEmpty()) {
+                candidates = byGender;
+                log.info("性别硬过滤：需求={}（{}）→ 仅保留{}性护工{}人，理由：{}",
+                        ctx.getSkill(), ctx.getRequireGender(), ctx.getRequireGender(),
+                        byGender.size(), ctx.getGenderReason());
+            } else {
+                // 无同性别护工：保留全部候选，靠打分里的 -500 重罚让异性排在最后
+                log.warn("需求[{}]要求{}性护工但当前无人在岗匹配，放宽性别限制（靠打分降权）",
+                        ctx.getSkill(), ctx.getRequireGender());
+            }
+        }
+
+        // 第二步：技能硬过滤（无技能要求则不过滤；无匹配则回退全量，保证叫得到人）
         if (ctx.getSkill() != null && !ctx.getSkill().isBlank()) {
             List<Caregiver> bySkill = candidates.stream()
                     .filter(c -> parseSkills(c).contains(ctx.getSkill()))
@@ -176,7 +197,7 @@ public class CaregiverServiceImpl implements CaregiverService {
             }
         }
 
-        // 第二步：加权打分
+        // 第三步：加权打分
         Caregiver best = null;
         int bestScore = Integer.MIN_VALUE;
         for (Caregiver c : candidates) {
@@ -188,10 +209,16 @@ public class CaregiverServiceImpl implements CaregiverService {
                 score += 40;
             }
 
-            // 性别匹配（助浴等需与老人同性别）
-            if (ctx.getRequireGender() != null && !ctx.getRequireGender().isBlank()
-                    && ctx.getRequireGender().equals(c.getGender())) {
-                score += 80;
+            // 性别匹配：按 AI 判定的强度分两种处理
+            //  - must（隐私类如助浴）：与要求同性别 +80，不同性别重罚（几乎不可能被选中）
+            //  - prefer（体力类如换灯泡）：同性 +80；不同性别不罚，仅在无人可选时才会被选
+            if (ctx.getRequireGender() != null && !ctx.getRequireGender().isBlank()) {
+                boolean genderHit = ctx.getRequireGender().equals(c.getGender());
+                if (genderHit) {
+                    score += 80;
+                } else if ("must".equals(ctx.getGenderStrength())) {
+                    score -= 500; // 隐私类硬约束：异性几乎不可接受
+                }
             }
 
             // 医疗设备匹配（健康类需携带设备）
@@ -220,10 +247,14 @@ public class CaregiverServiceImpl implements CaregiverService {
         }
 
         if (best != null) {
-            log.info("加权调度：场景={}, 候选{}人, 选中={}(技能={}, 性别={}, 带设备={}, 区域={}, 负载={})",
+            log.info("加权调度：场景={}, 候选{}人, 选中={}(技能={}, 性别={}, 带设备={}, 区域={}, 负载={})"
+                            + " | 性别要求={}({}), 理由：{}",
                     ctx.getCategory(), candidates.size(), best.getName(),
                     ctx.getSkill(), best.getGender(),
-                    best.getCanCarryDevice(), best.getArea(), best.getCurrentOrderCount());
+                    best.getCanCarryDevice(), best.getArea(), best.getCurrentOrderCount(),
+                    ctx.getRequireGender() == null ? "不限" : ctx.getRequireGender(),
+                    ctx.getGenderStrength() == null ? "any" : ctx.getGenderStrength(),
+                    ctx.getGenderReason());
         }
         return best;
     }

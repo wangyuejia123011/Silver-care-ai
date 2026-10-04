@@ -20,8 +20,19 @@ public class DispatchContext {
     /** 是否需要护工携带医疗设备上门（如血压计/体温计） */
     private boolean needDevice;
 
-    /** 要求护工性别（助浴等场景需与老人性别一致），null 表示不限 */
+    /** 要求护工性别（"男"/"女"），null 表示不限。由 AI 根据需求判定，见 OrderDispatchAgent */
     private String requireGender;
+
+    /**
+     * 性别要求的强度：
+     * must   —— 强制同性别（隐私类需求，如助浴），不同性别的护工应被排除；
+     * prefer —— 偏好某性别（体力/技术活，如换灯泡），同性别加分但不是硬性排除；
+     * any    —— 不限。
+     */
+    private String genderStrength;
+
+    /** AI 判定性别要求的理由（便于日志排查与前端展示） */
+    private String genderReason;
 
     /** 是否紧急工单 */
     private boolean emergency;
