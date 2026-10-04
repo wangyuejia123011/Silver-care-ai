@@ -11,37 +11,16 @@
 --   ALTER TABLE health_record ADD COLUMN elderly_name VARCHAR(50) COMMENT '老人姓名（冗余）';
 --   ALTER TABLE health_record ADD COLUMN age INT COMMENT '年龄（冗余）';
 -- ============================================================
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-DROP PROCEDURE IF EXISTS _add_hr_cols;
-DELIMITER $$
-CREATE PROCEDURE _add_hr_cols()
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME  = 'health_record'
-          AND COLUMN_NAME = 'elderly_name'
-    ) THEN
-        ALTER TABLE health_record
-            ADD COLUMN elderly_name VARCHAR(50) COMMENT '老人姓名（冗余，方便查询）';
-    END IF;
+    SET @ddl = (SELECT IF(COUNT(*) = 0,
+    'ALTER TABLE health_record ADD COLUMN age INT COMMENT ''年龄（冗余，方便查询）''',
+    'health_record.age already exists')
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'health_record'
+      AND COLUMN_NAME = 'age');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-    IF NOT EXISTS (
-        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME  = 'health_record'
-          AND COLUMN_NAME = 'age'
-    ) THEN
-        ALTER TABLE health_record
-            ADD COLUMN age INT COMMENT '年龄（冗余，方便查询）';
-    END IF;
-END$$
-DELIMITER ;
-
-CALL _add_hr_cols();
-DROP PROCEDURE IF EXISTS _add_hr_cols;
-
--- 校验：应输出 elderly_name 与 age 两行
 SELECT COLUMN_NAME, DATA_TYPE
 FROM INFORMATION_SCHEMA.COLUMNS
 WHERE TABLE_SCHEMA = DATABASE()

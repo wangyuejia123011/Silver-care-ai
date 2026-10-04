@@ -14,129 +14,112 @@
 --   curl -s "http://localhost:8080/api/health/list/1"
 -- 若返回 {"code":200,"data":[]} 且无报错，说明数据库列已补齐。
 -- ============================================================
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-DROP PROCEDURE IF EXISTS _add_hr_all_cols;
-DELIMITER $$
-CREATE PROCEDURE _add_hr_all_cols()
-BEGIN
-    -- 老人姓名（冗余）
-    IF NOT EXISTS (
-        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'health_record' AND COLUMN_NAME = 'elderly_name'
-    ) THEN
-        ALTER TABLE health_record ADD COLUMN elderly_name VARCHAR(50) COMMENT '老人姓名（冗余，方便查询）';
-    END IF;
+    SET @ddl = (SELECT IF(COUNT(*) = 0,
+    'ALTER TABLE health_record ADD COLUMN age INT COMMENT ''年龄（冗余，方便查询）''',
+    'health_record.age already exists')
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'health_record'
+      AND COLUMN_NAME = 'age');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-    -- 年龄（冗余）
-    IF NOT EXISTS (
-        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'health_record' AND COLUMN_NAME = 'age'
-    ) THEN
-        ALTER TABLE health_record ADD COLUMN age INT COMMENT '年龄（冗余，方便查询）';
-    END IF;
+    SET @ddl = (SELECT IF(COUNT(*) = 0,
+    'ALTER TABLE health_record ADD COLUMN systolic_pressure INT COMMENT ''收缩压（高压）''',
+    'health_record.systolic_pressure already exists')
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'health_record'
+      AND COLUMN_NAME = 'systolic_pressure');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-    -- 收缩压（高压）
-    IF NOT EXISTS (
-        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'health_record' AND COLUMN_NAME = 'systolic_pressure'
-    ) THEN
-        ALTER TABLE health_record ADD COLUMN systolic_pressure INT COMMENT '收缩压（高压）';
-    END IF;
+    SET @ddl = (SELECT IF(COUNT(*) = 0,
+    'ALTER TABLE health_record ADD COLUMN diastolic_pressure INT COMMENT ''舒张压（低压）''',
+    'health_record.diastolic_pressure already exists')
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'health_record'
+      AND COLUMN_NAME = 'diastolic_pressure');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-    -- 舒张压（低压）
-    IF NOT EXISTS (
-        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'health_record' AND COLUMN_NAME = 'diastolic_pressure'
-    ) THEN
-        ALTER TABLE health_record ADD COLUMN diastolic_pressure INT COMMENT '舒张压（低压）';
-    END IF;
+    SET @ddl = (SELECT IF(COUNT(*) = 0,
+    'ALTER TABLE health_record ADD COLUMN heart_rate INT COMMENT ''心率''',
+    'health_record.heart_rate already exists')
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'health_record'
+      AND COLUMN_NAME = 'heart_rate');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-    -- 心率
-    IF NOT EXISTS (
-        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'health_record' AND COLUMN_NAME = 'heart_rate'
-    ) THEN
-        ALTER TABLE health_record ADD COLUMN heart_rate INT COMMENT '心率';
-    END IF;
+    SET @ddl = (SELECT IF(COUNT(*) = 0,
+    'ALTER TABLE health_record ADD COLUMN blood_sugar DECIMAL(5,1) COMMENT ''血糖''',
+    'health_record.blood_sugar already exists')
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'health_record'
+      AND COLUMN_NAME = 'blood_sugar');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-    -- 血糖
-    IF NOT EXISTS (
-        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'health_record' AND COLUMN_NAME = 'blood_sugar'
-    ) THEN
-        ALTER TABLE health_record ADD COLUMN blood_sugar DECIMAL(5,1) COMMENT '血糖';
-    END IF;
+    SET @ddl = (SELECT IF(COUNT(*) = 0,
+    'ALTER TABLE health_record ADD COLUMN temperature DECIMAL(4,1) COMMENT ''体温''',
+    'health_record.temperature already exists')
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'health_record'
+      AND COLUMN_NAME = 'temperature');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-    -- 体温
-    IF NOT EXISTS (
-        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'health_record' AND COLUMN_NAME = 'temperature'
-    ) THEN
-        ALTER TABLE health_record ADD COLUMN temperature DECIMAL(4,1) COMMENT '体温';
-    END IF;
+    SET @ddl = (SELECT IF(COUNT(*) = 0,
+    'ALTER TABLE health_record ADD COLUMN source VARCHAR(20) DEFAULT ''manual'' COMMENT ''来源：voice/manual''',
+    'health_record.source already exists')
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'health_record'
+      AND COLUMN_NAME = 'source');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-    -- 来源：voice/manual
-    IF NOT EXISTS (
-        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'health_record' AND COLUMN_NAME = 'source'
-    ) THEN
-        ALTER TABLE health_record ADD COLUMN source VARCHAR(20) DEFAULT 'manual' COMMENT '来源：voice/manual';
-    END IF;
+    SET @ddl = (SELECT IF(COUNT(*) = 0,
+    'ALTER TABLE health_record ADD COLUMN voice_text TEXT COMMENT ''语音识别原文''',
+    'health_record.voice_text already exists')
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'health_record'
+      AND COLUMN_NAME = 'voice_text');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-    -- 语音识别原文
-    IF NOT EXISTS (
-        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'health_record' AND COLUMN_NAME = 'voice_text'
-    ) THEN
-        ALTER TABLE health_record ADD COLUMN voice_text TEXT COMMENT '语音识别原文';
-    END IF;
+    SET @ddl = (SELECT IF(COUNT(*) = 0,
+    'ALTER TABLE health_record ADD COLUMN risk_level VARCHAR(10) DEFAULT ''low'' COMMENT ''风险等级：low/medium/high''',
+    'health_record.risk_level already exists')
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'health_record'
+      AND COLUMN_NAME = 'risk_level');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-    -- 风险等级
-    IF NOT EXISTS (
-        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'health_record' AND COLUMN_NAME = 'risk_level'
-    ) THEN
-        ALTER TABLE health_record ADD COLUMN risk_level VARCHAR(10) DEFAULT 'low' COMMENT '风险等级：low/medium/high';
-    END IF;
+    SET @ddl = (SELECT IF(COUNT(*) = 0,
+    'ALTER TABLE health_record ADD COLUMN ai_advice TEXT COMMENT ''AI健康建议''',
+    'health_record.ai_advice already exists')
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'health_record'
+      AND COLUMN_NAME = 'ai_advice');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-    -- AI 健康建议
-    IF NOT EXISTS (
-        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'health_record' AND COLUMN_NAME = 'ai_advice'
-    ) THEN
-        ALTER TABLE health_record ADD COLUMN ai_advice TEXT COMMENT 'AI健康建议';
-    END IF;
+    SET @ddl = (SELECT IF(COUNT(*) = 0,
+    'ALTER TABLE health_record ADD COLUMN is_alert TINYINT DEFAULT 0 COMMENT ''是否高危：0-正常 1-高危''',
+    'health_record.is_alert already exists')
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'health_record'
+      AND COLUMN_NAME = 'is_alert');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-    -- 是否高危
-    IF NOT EXISTS (
-        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'health_record' AND COLUMN_NAME = 'is_alert'
-    ) THEN
-        ALTER TABLE health_record ADD COLUMN is_alert TINYINT DEFAULT 0 COMMENT '是否高危：0-正常 1-高危';
-    END IF;
+    SET @ddl = (SELECT IF(COUNT(*) = 0,
+    'ALTER TABLE health_record ADD COLUMN record_time DATETIME COMMENT ''记录时间''',
+    'health_record.record_time already exists')
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'health_record'
+      AND COLUMN_NAME = 'record_time');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-    -- 记录时间
-    IF NOT EXISTS (
-        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'health_record' AND COLUMN_NAME = 'record_time'
-    ) THEN
-        ALTER TABLE health_record ADD COLUMN record_time DATETIME COMMENT '记录时间';
-    END IF;
+    SET @ddl = (SELECT IF(COUNT(*) = 0,
+    'ALTER TABLE health_record ADD COLUMN create_time DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT ''创建时间''',
+    'health_record.create_time already exists')
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'health_record'
+      AND COLUMN_NAME = 'create_time');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-    -- 创建时间
-    IF NOT EXISTS (
-        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'health_record' AND COLUMN_NAME = 'create_time'
-    ) THEN
-        ALTER TABLE health_record ADD COLUMN create_time DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间';
-    END IF;
-END$$
-DELIMITER ;
-
-CALL _add_hr_all_cols();
-DROP PROCEDURE IF EXISTS _add_hr_all_cols;
-
--- 校验：应输出 id, user_id 以及上面补全的全部列
 SELECT COLUMN_NAME, DATA_TYPE, COLUMN_DEFAULT, COLUMN_COMMENT
 FROM INFORMATION_SCHEMA.COLUMNS
 WHERE TABLE_SCHEMA = DATABASE()
