@@ -22,6 +22,9 @@ public class CaregiverProfile {
     /** 服务统计：今日工单/待完成/已完成/总接单 */
     private Map<String, Object> stats;
 
-    /** 个人主页展示状态文案：在岗 / 休息中 */
+    /** 接单状态文案：实时接单中 / 停止接单（由可服务时间决定） */
     private String statusText;
+
+    /** 当前是否在接单：true=在可服务时间内。前端据此显示绿色/红色，前端不必重复解析时间文本 */
+    private Boolean onDuty;
 }

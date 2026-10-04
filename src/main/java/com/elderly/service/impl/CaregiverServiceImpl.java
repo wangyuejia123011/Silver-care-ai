@@ -9,6 +9,7 @@ import com.elderly.entity.DispatchContext;
 import com.elderly.mapper.CareOrderMapper;
 import com.elderly.mapper.CaregiverMapper;
 import com.elderly.service.CaregiverService;
+import com.elderly.util.ServiceTimeUtil;
 import jakarta.annotation.Resource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,7 +62,12 @@ public class CaregiverServiceImpl implements CaregiverService {
         CaregiverProfile profile = new CaregiverProfile();
         profile.setCaregiver(caregiver);
         profile.setSkills(parseSkills(caregiver));
-        profile.setStatusText("on".equals(caregiver.getStatus()) ? "在岗接单中" : "休息中");
+        // 接单状态由「可服务时间」决定（与调度过滤用同一个 ServiceTimeUtil，保证口径一致）：
+        // 在岗且当前在服务时间内 → 实时接单中；否则 → 停止接单。
+        boolean onDuty = "on".equals(caregiver.getStatus())
+                && ServiceTimeUtil.isOnDuty(caregiver.getServiceTime());
+        profile.setOnDuty(onDuty);
+        profile.setStatusText(onDuty ? "实时接单中" : "停止接单");
 
         Map<String, Object> stats = new HashMap<>();
         stats.put("todayOrders", countSafe(() -> careOrderMapper.countTodayByCaregiverId(id)));
@@ -136,9 +142,26 @@ public class CaregiverServiceImpl implements CaregiverService {
      */
     @Override
     public Caregiver matchBestCaregiver(DispatchContext ctx, String address) {
-        List<Caregiver> candidates = caregiverMapper.selectAll(); // 在岗，已按负载升序
-        if (candidates == null || candidates.isEmpty()) {
+        List<Caregiver> all = caregiverMapper.selectAll(); // 在岗，已按负载升序
+        if (all == null || all.isEmpty()) {
             return null;
+        }
+
+        // 第零步：可服务时间硬过滤。
+        // 护工填了 service_time（如「8:00-10:00」）后，时间外不应再被派单，
+        // 否则会出现「详情页显示停止接单，却仍被叫上门」的矛盾。
+        // 与技能过滤一样保留兜底：若因此无人可派，放宽至全量在岗护工，保证叫得到人。
+        List<Caregiver> candidates = all.stream()
+                .filter(c -> ServiceTimeUtil.isOnDuty(c.getServiceTime()))
+                .toList();
+        if (!candidates.isEmpty()) {
+            int offDuty = all.size() - candidates.size();
+            if (offDuty > 0) {
+                log.info("可服务时间过滤：{}人在服务时间内，{}人已停止接单", candidates.size(), offDuty);
+            }
+        } else {
+            candidates = all;
+            log.warn("当前无在服务时间内的护工，放宽至全量在岗护工（{}人）", all.size());
         }
 
         // 第一步：技能硬过滤（无技能要求则不过滤；无匹配则回退全量，保证叫得到人）
