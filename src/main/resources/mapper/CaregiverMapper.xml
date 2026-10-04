@@ -35,9 +35,15 @@
         avatar, bio, experience_years, rating, rating_count, service_time, create_time
     </sql>
 
+    <!-- 注册护工：扩展列（avatar/bio/experience_years/rating/rating_count/service_time）必须一起写入，
+         否则前端注册时填的「个人介绍 / 从业年限 / 可服务时间」会丢失（曾踩过）。
+         avatar 未传时为 null 落库，详情页走头像占位，不影响。 -->
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO caregiver (name, phone, gender, age, skills, area, current_order_count, total_order_count, status, can_carry_device, create_time)
-        VALUES (#{name}, #{phone}, #{gender}, #{age}, #{skills}, #{area}, 0, 0, 'on', #{canCarryDevice}, NOW())
+        INSERT INTO caregiver (name, phone, gender, age, skills, area, current_order_count, total_order_count,
+                               status, can_carry_device, avatar, bio, experience_years, rating, rating_count,
+                               service_time, create_time)
+        VALUES (#{name}, #{phone}, #{gender}, #{age}, #{skills}, #{area}, 0, 0, 'on', #{canCarryDevice},
+                #{avatar}, #{bio}, #{experienceYears}, #{rating}, #{ratingCount}, #{serviceTime}, NOW())
     </insert>
 
     <select id="selectById" resultMap="caregiverMap">

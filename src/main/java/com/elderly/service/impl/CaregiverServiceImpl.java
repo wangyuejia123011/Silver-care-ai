@@ -235,7 +235,19 @@ public class CaregiverServiceImpl implements CaregiverService {
             }
             caregiver.setSkills(arr.toJSONString());
         }
+        // 新注册护工的评分基线：默认 5.0 分、0 人评价。
+        // 详情页按 ratingCount>0 判断有无真实评价，避免显示成 0 分。
+        if (caregiver.getRating() == null) {
+            caregiver.setRating(new java.math.BigDecimal("5.0"));
+        }
+        if (caregiver.getRatingCount() == null) {
+            caregiver.setRatingCount(0);
+        }
         caregiverMapper.insert(caregiver);
+        log.info("护工注册成功：id={}, name={}, 从业年限={}, 有个人介绍={}, 可服务时间={}",
+                caregiver.getId(), caregiver.getName(), caregiver.getExperienceYears(),
+                caregiver.getBio() != null && !caregiver.getBio().isBlank(),
+                caregiver.getServiceTime());
         return caregiver;
     }
 }
