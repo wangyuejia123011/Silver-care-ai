@@ -19,11 +19,15 @@
         <result property="assignedTime" column="assigned_time"/>
         <result property="createTime" column="create_time"/>
         <result property="finishTime" column="finish_time"/>
+        <result property="rating" column="rating"/>
+        <result property="ratingComment" column="rating_comment"/>
+        <result property="ratingTime" column="rating_time"/>
     </resultMap>
 
     <sql id="cols">
         id, user_id, elderly_name, address, phone, order_type, demand, order_content,
-        need_medical_device, status, handler_name, caregiver_id, assigned_time, create_time, finish_time
+        need_medical_device, status, handler_name, caregiver_id, assigned_time, create_time, finish_time,
+        rating, rating_comment, rating_time
     </sql>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
@@ -102,5 +106,22 @@
     <delete id="deleteByUserId">
         DELETE FROM care_order WHERE user_id = #{userId}
     </delete>
+
+    <!-- 写入评分：rating IS NULL 作为乐观锁，防止同工单被重复评分 -->
+    <update id="rateOrder">
+        UPDATE care_order
+        SET rating = #{rating},
+            rating_comment = #{ratingComment},
+            rating_time = NOW()
+        WHERE id = #{id} AND rating IS NULL
+    </update>
+
+    <!-- 汇总某护工全部有效评分：条数 + 平均分（保留一位小数） -->
+    <select id="selectRatingAggByCaregiverId" resultType="com.elderly.dto.RatingAgg">
+        SELECT COUNT(*) AS count,
+               ROUND(AVG(rating), 1) AS avg
+        FROM care_order
+        WHERE caregiver_id = #{caregiverId} AND rating IS NOT NULL
+    </select>
 
 </mapper>

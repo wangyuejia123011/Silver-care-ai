@@ -24,4 +24,7 @@ public interface FamilyBindMapper {
     FamilyBind selectByOpenId(@Param("openId") String openId);
 
     List<FamilyBind> selectByCaregiverId(@Param("caregiverId") Long caregiverId);
+
+    /** 注销老人时清理其全部绑定关系（家属/护工） */
+    int deleteByElderlyUserId(@Param("elderlyUserId") Long elderlyUserId);
 }

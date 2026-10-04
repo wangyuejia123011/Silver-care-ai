@@ -94,6 +94,18 @@ public class CaregiverServiceImpl implements CaregiverService {
     }
 
     @Override
+    public void deleteCaregiver(Long id) {
+        if (id == null) {
+            return;
+        }
+        int rows = caregiverMapper.deleteById(id);
+        log.info("护工[{}]账号已注销", id);
+        if (rows == 0) {
+            log.warn("护工[{}]注销时未删除任何记录，可能已被注销", id);
+        }
+    }
+
+    @Override
     public void updateCaregiver(Caregiver caregiver) {
         if (caregiver == null || caregiver.getId() == null) {
             return;

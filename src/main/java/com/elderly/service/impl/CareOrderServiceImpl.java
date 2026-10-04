@@ -1,5 +1,6 @@
 package com.elderly.service.impl;
 
+import com.elderly.dto.RatingAgg;
 import com.elderly.mapper.CareOrderMapper;
 import com.elderly.mapper.CaregiverMapper;
 import com.elderly.service.CareOrderService;
@@ -134,6 +135,67 @@ public class CareOrderServiceImpl implements CareOrderService {
     @Override
     public int clearByUserId(Long userId) {
         return careOrderMapper.deleteByUserId(userId);
+    }
+
+    /**
+     * 工单评分：写入评价后，汇总该护工【所有工单】的评分重新加权平均，回写护工档案。
+     *
+     * 加权口径说明：每个有效评价等权（即简单平均），不做按时效衰减。
+     * 之所以每次都全量重算而不是"旧均分 + 新分 / n"递推，是为了避免递推式误差累积，
+     * 也让删除工单（clearByUserId）后评分能自动回落成正确值。
+     */
+    @Override
+    public String rateOrder(Long orderId, Integer rating, String ratingComment) {
+        if (orderId == null) {
+            return "工单ID不能为空";
+        }
+        if (rating == null || rating < 1 || rating > 5) {
+            return "请选择1-5星评分";
+        }
+        CareOrder order = careOrderMapper.selectById(orderId);
+        if (order == null) {
+            return "工单不存在";
+        }
+        if (!"done".equals(order.getStatus())) {
+            return "工单完成后才能评价";
+        }
+        if (order.getRating() != null) {
+            return "该工单已评价过，不能重复评价";
+        }
+
+        String comment = ratingComment == null ? null : ratingComment.trim();
+        if (comment != null && comment.length() > 200) {
+            comment = comment.substring(0, 200);
+        }
+
+        // rating IS NULL 兜底并发重复提交
+        int rows = careOrderMapper.rateOrder(orderId, rating, comment);
+        if (rows == 0) {
+            return "该工单已评价过，不能重复评价";
+        }
+
+        // 同步刷新护工档案的评分与评价人数
+        if (order.getCaregiverId() != null) {
+            try {
+                RatingAgg agg = careOrderMapper.selectRatingAggByCaregiverId(order.getCaregiverId());
+                if (agg != null && agg.getCount() != null && agg.getCount() > 0) {
+                    Caregiver patch = new Caregiver();
+                    patch.setId(order.getCaregiverId());
+                    patch.setRatingCount(agg.getCount());
+                    // DECIMAL(3,1) 精度；avg 为 null（理论上不会发生）时保留原值
+                    if (agg.getAvg() != null) {
+                        patch.setRating(new java.math.BigDecimal(String.valueOf(agg.getAvg())));
+                    }
+                    caregiverMapper.updateRating(patch);
+                    log.info("评分已同步：护工[{}] 评分={} 评价数={}（工单#{}）",
+                            order.getCaregiverId(), agg.getAvg(), agg.getCount(), orderId);
+                }
+            } catch (Exception e) {
+                // 评分已落库，档案刷新失败不该让用户看到"保存失败"，只记日志
+                log.warn("护工[{}]评分档案刷新失败: {}", order.getCaregiverId(), e.getMessage());
+            }
+        }
+        return null;
     }
 
     /**

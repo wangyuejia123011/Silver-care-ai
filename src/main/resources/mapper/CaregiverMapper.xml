@@ -67,6 +67,15 @@
         WHERE id = #{id}
     </update>
 
+    <update id="updateRating">
+        UPDATE caregiver
+        <set>
+            <if test="rating != null">rating = #{rating},</if>
+            <if test="ratingCount != null">rating_count = #{ratingCount},</if>
+        </set>
+        WHERE id = #{id}
+    </update>
+
     <select id="selectAll" resultMap="caregiverMap">
         SELECT <include refid="cols"/> FROM caregiver
         WHERE status = 'on' ORDER BY current_order_count ASC
@@ -93,5 +102,9 @@
         SELECT <include refid="cols"/> FROM caregiver
         ORDER BY total_order_count DESC LIMIT #{limit}
     </select>
+
+    <delete id="deleteById">
+        DELETE FROM caregiver WHERE id = #{id}
+    </delete>
 
 </mapper>

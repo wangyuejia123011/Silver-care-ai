@@ -60,4 +60,8 @@
         SELECT <include refid="cols"/> FROM elderly_user ORDER BY create_time DESC
     </select>
 
+    <delete id="deleteById">
+        DELETE FROM elderly_user WHERE id = #{id}
+    </delete>
+
 </mapper>

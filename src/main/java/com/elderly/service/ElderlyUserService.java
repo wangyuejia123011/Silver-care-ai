@@ -19,4 +19,10 @@ public interface ElderlyUserService {
 
     /** 查询全部用户 */
     List<ElderlyUser> listAll();
+
+    /**
+     * 注销老人账号：先清关联数据（工单、绑定关系），再删档案。
+     * 返回 null 表示成功；返回中文错误文案表示失败（用户不存在）。
+     */
+    String deleteUser(Long id);
 }

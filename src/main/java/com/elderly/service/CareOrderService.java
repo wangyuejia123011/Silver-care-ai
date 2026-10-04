@@ -32,4 +32,12 @@ public interface CareOrderService {
 
     /** 清空用户工单 */
     int clearByUserId(Long userId);
+
+    /**
+     * 工单评分（仅已完成工单可评）。
+     * 评分写入后重新汇总该护工「所有工单」的评分并加权平均，回写 caregiver.rating / rating_count。
+     *
+     * @return null 表示成功；返回中文错误文案表示失败（工单不存在 / 未完成 / 已评价 / 评分非法）
+     */
+    String rateOrder(Long orderId, Integer rating, String ratingComment);
 }

@@ -53,6 +53,15 @@ public class CareOrder {
     /** 完成时间 */
     private LocalDateTime finishTime;
 
+    /** 老人评分：1-5 星，null 表示未评价 */
+    private Integer rating;
+
+    /** 评价内容 */
+    private String ratingComment;
+
+    /** 评价时间 */
+    private LocalDateTime ratingTime;
+
     /** 非数据库字段：老人健康摘要（工单生成Prompt入参，由Agent5传入） */
     private transient String healthSummary;
 }

@@ -31,6 +31,10 @@
         DELETE FROM family_bind WHERE id = #{id}
     </delete>
 
+    <delete id="deleteByElderlyUserId">
+        DELETE FROM family_bind WHERE elderly_user_id = #{elderlyUserId}
+    </delete>
+
     <update id="updateById">
         UPDATE family_bind
         SET open_id = #{openId},

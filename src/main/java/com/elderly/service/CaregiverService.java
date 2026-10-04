@@ -32,6 +32,9 @@ public interface CaregiverService {
      */
     Caregiver matchBestCaregiver(DispatchContext ctx, String address);
 
+    /** 注销护工账号（物理删除档案，名下历史工单保留） */
+    void deleteCaregiver(Long id);
+
     /** 新增护工 */
     Caregiver addCaregiver(Caregiver caregiver);
 

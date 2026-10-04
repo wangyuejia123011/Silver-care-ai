@@ -62,6 +62,20 @@ public class UserController {
     }
 
     /**
+     * 注销老人账号。
+     * 连带清理该老人的全部工单、家属/护工绑定关系、健康记录 —— 这些数据对本人已无意义。
+     * 若被注销的是当前登录账号，前端需同步清掉本地缓存并退回角色选择。
+     */
+    @DeleteMapping("/{id}")
+    public R<Void> delete(@PathVariable Long id) {
+        String err = userService.deleteUser(id);
+        if (err != null) {
+            return R.fail(400, err);
+        }
+        return R.success("账号已注销", null);
+    }
+
+    /**
      * 查询全部用户
      */
     @GetMapping("/list")

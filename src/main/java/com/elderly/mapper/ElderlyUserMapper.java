@@ -22,4 +22,10 @@ public interface ElderlyUserMapper {
 
     /** 查询全部用户 */
     List<ElderlyUser> selectAll();
+
+    /**
+     * 注销老人账号（物理删除档案）。
+     * 关联数据（工单、绑定关系、健康记录）由 Service 层先清，避免残留孤儿数据。
+     */
+    int deleteById(@Param("id") Long id);
 }

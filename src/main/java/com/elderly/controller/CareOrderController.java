@@ -15,6 +15,7 @@ import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 护工工单接口 —— AI生成工单、查询、状态管理
@@ -126,6 +127,34 @@ public class CareOrderController {
             created.setStatus("assigned");
         }
         return R.success("智能派单完成", created);
+    }
+
+    /**
+     * 工单评价（仅已完成工单可评）。
+     * 评分采用"每个有效评价等权"口径 —— 写入后汇总该护工所有工单评分重新平均，
+     * 回写 caregiver.rating / rating_count，护工详情页即时可见。
+     */
+    @PostMapping("/{id}/rate")
+    public R<CareOrder> rate(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        Integer rating = null;
+        Object r = body.get("rating");
+        if (r instanceof Number n) {
+            rating = n.intValue();
+        } else if (r != null) {
+            try {
+                rating = Integer.parseInt(String.valueOf(r).trim());
+            } catch (NumberFormatException ignored) {
+                // 交给 Service 统一返回"请选择1-5星评分"
+            }
+        }
+        Object c = body.get("ratingComment");
+        String comment = c == null ? null : String.valueOf(c);
+
+        String err = careOrderService.rateOrder(id, rating, comment);
+        if (err != null) {
+            return R.fail(400, err);
+        }
+        return R.success("评价成功，感谢您的反馈", careOrderService.getById(id));
     }
 
     /**

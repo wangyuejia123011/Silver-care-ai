@@ -43,6 +43,21 @@ public class CaregiverController {
     }
 
     /**
+     * 注销护工账号（物理删除档案）。
+     * 注销后不再进入调度候选池；名下历史工单保留，仅 caregiver_id 变成悬空值，
+     * 工单列表仍可按 handlerName 正常展示，不影响老人查看历史记录。
+     */
+    @DeleteMapping("/{id}")
+    public R<Void> delete(@PathVariable Long id) {
+        Caregiver exists = caregiverService.getById(id);
+        if (exists == null) {
+            return R.fail(404, "护工不存在");
+        }
+        caregiverService.deleteCaregiver(id);
+        return R.success("账号已注销", null);
+    }
+
+    /**
      * 护工详细档案（详情页专用）：基础档案 + 技能数组 + 服务统计 + 近期服务过的老人。
      * 放在 /{id}/profile 而不是 /{id}，是为了不改老接口的返回结构，老调用方不受影响。
      */

@@ -1,5 +1,6 @@
 package com.elderly.mapper;
 
+import com.elderly.dto.RatingAgg;
 import com.elderly.entity.CareOrder;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -45,4 +46,15 @@ public interface CareOrderMapper {
 
     /** 根据用户ID清空工单 */
     int deleteByUserId(@Param("userId") Long userId);
+
+    /**
+     * 写入工单评分。
+     * WHERE 里带 rating IS NULL 作为乐观锁：并发重复提交时只有第一次更新成功（返回1），
+     * 返回 0 说明该工单已被评过分，Service 层据此拒绝重复评分。
+     */
+    int rateOrder(@Param("id") Long id, @Param("rating") Integer rating,
+                  @Param("ratingComment") String ratingComment);
+
+    /** 汇总某护工的全部有效评分（条数 + 平均分），用于回写护工档案 */
+    RatingAgg selectRatingAggByCaregiverId(@Param("caregiverId") Long caregiverId);
 }
