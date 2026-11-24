@@ -50,9 +50,16 @@ public class LlmUtil {
     @Value("${ai.aliyun.model:qwen-turbo}")
     private String aliModel;
 
-    /** DashScope OpenAI 兼容端点基地址 */
+    /** OpenAI 兼容端点基地址（百炼=https://dashscope.aliyuncs.com） */
     @Value("${ai.aliyun.base-url:https://dashscope.aliyuncs.com}")
     private String aliBaseUrl;
+
+    /**
+     * OpenAI 兼容聊天的路径（百炼 compatible-mode: /compatible-mode/v1/chat/completions）
+     * 若切换其他 OpenAI 兼容服务，可通过 ai.aliyun.chat-path 覆盖。
+     */
+    @Value("${ai.aliyun.chat-path:/compatible-mode/v1/chat/completions}")
+    private String aliChatPath;
 
     /**
      * 生成温度（0~1，越高越随机，越低越确定）
@@ -138,7 +145,7 @@ public class LlmUtil {
                 aliConfigured = true;
                 log.info("========================================");
                 log.info(" 阿里云通义千问 AI 服务已启用（OpenAI 兼容模式）");
-                log.info("   端点    : {}/compatible-mode/v1/chat/completions", aliBaseUrl);
+                log.info("   端点    : {}{}", aliBaseUrl, aliChatPath);
                 log.info("   模型    : {}", aliModel);
                 log.info("   温度    : {}", temperature);
                 log.info("   TopP    : {}", topP);
@@ -320,7 +327,7 @@ public class LlmUtil {
             }
 
             return aliyunClient.post()
-                    .uri("/compatible-mode/v1/chat/completions")
+                    .uri(aliChatPath)
                     .contentType(MediaType.APPLICATION_JSON)
                     .bodyValue(body.toJSONString())
                     .retrieve()
@@ -468,7 +475,7 @@ public class LlmUtil {
         Map<String, Object> aliyun = new LinkedHashMap<>();
         aliyun.put("configured", aliConfigured);
         aliyun.put("model", aliModel);
-        aliyun.put("endpoint", aliBaseUrl + "/compatible-mode/v1/chat/completions");
+        aliyun.put("endpoint", aliBaseUrl + aliChatPath);
         aliyun.put("temperature", temperature);
         aliyun.put("topP", topP);
         aliyun.put("maxTokens", maxTokens);
