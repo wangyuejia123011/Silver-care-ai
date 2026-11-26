@@ -80,12 +80,24 @@ public class OrderDispatchAgent {
             if (userId != null) {
                 HealthRecord latest = healthRecordService.getLatest(userId);
                 if (latest != null) {
-                    String summary = String.format("血压%d/%d，心率%s，血糖%s",
-                            latest.getSystolicPressure() == null ? 0 : latest.getSystolicPressure(),
-                            latest.getDiastolicPressure() == null ? 0 : latest.getDiastolicPressure(),
-                            latest.getHeartRate() == null ? "未知" : latest.getHeartRate(),
-                            latest.getBloodSugar() == null ? "未知" : latest.getBloodSugar());
-                    order.setHealthSummary(summary);
+                    // 大白话健康摘要：缺失值说"没测"，不写 0/null，避免护工误以为测出0
+                    StringBuilder summary = new StringBuilder("最近测得：");
+                    if (latest.getSystolicPressure() != null) {
+                        summary.append("高压").append(latest.getSystolicPressure());
+                        summary.append(latest.getDiastolicPressure() != null
+                                ? "、低压" + latest.getDiastolicPressure() : "（低压没测）");
+                        summary.append("，");
+                    }
+                    if (latest.getHeartRate() != null) {
+                        summary.append("心率每分钟").append(latest.getHeartRate()).append("次，");
+                    }
+                    if (latest.getBloodSugar() != null) {
+                        summary.append("血糖").append(latest.getBloodSugar()).append("，");
+                    }
+                    if (summary.length() == "最近测得：".length()) {
+                        summary.append("暂没测到具体指标");
+                    }
+                    order.setHealthSummary(summary.toString());
                 }
             }
         } catch (Exception e) {

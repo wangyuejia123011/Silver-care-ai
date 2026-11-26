@@ -66,6 +66,15 @@
         LIMIT 1
     </select>
 
+    <select id="selectListByOpenId" resultMap="bindMap">
+        SELECT b.id, b.elderly_user_id, b.role, b.name, b.phone, b.open_id, b.caregiver_id,
+               b.notify_enabled, b.create_time, u.name AS elderly_name, u.address AS elderly_address
+        FROM family_bind b
+        LEFT JOIN elderly_user u ON u.id = b.elderly_user_id
+        WHERE b.open_id = #{openId} AND b.role = 'family'
+        ORDER BY b.create_time DESC
+    </select>
+
     <select id="selectByCaregiverId" resultMap="bindMap">
         SELECT b.id, b.elderly_user_id, b.role, b.name, b.phone, b.open_id, b.caregiver_id,
                b.notify_enabled, b.create_time, u.name AS elderly_name, u.address AS elderly_address

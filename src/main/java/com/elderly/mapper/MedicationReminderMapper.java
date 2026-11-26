@@ -22,4 +22,7 @@ public interface MedicationReminderMapper {
 
     /** 按用户查询已启用项（按服药时间升序） */
     List<MedicationReminder> selectEnabledByUserId(@Param("userId") Long userId);
+
+    /** 查询全部老人已启用的服药计划（漏服巡检用） */
+    List<MedicationReminder> selectAllEnabled();
 }

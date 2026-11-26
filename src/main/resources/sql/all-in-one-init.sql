@@ -236,6 +236,22 @@ INSERT INTO medication_reminder (user_id, drug_name, dose_time, dosage, enabled)
 SELECT id, '安神药',  '21:00:00', '1片', 1 FROM elderly_user WHERE open_id = 'demo_openid_002';
 
 -- ----------------------------
+-- 10.1 服药打卡记录表（支撑"到点未服药 → 通知家属"）
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS medication_taken_log (
+    id          BIGINT       PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+    user_id     BIGINT       NOT NULL COMMENT '关联老人用户ID',
+    dose_time   TIME         NOT NULL COMMENT '服药时间，如 08:00:00',
+    drug_name   VARCHAR(100) NOT NULL DEFAULT '' COMMENT '药名，与 medication_reminder.drug_name 一致',
+    taken_date  DATE         NOT NULL COMMENT '打卡日期',
+    taken_at    DATETIME     NOT NULL COMMENT '实际打卡时刻',
+    source      VARCHAR(20)  DEFAULT 'elder' COMMENT '打卡来源：elder=老人自己打勾 / family=家属代填',
+    create_time DATETIME     DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    UNIQUE KEY uk_user_dose_drug_date (user_id, dose_time, drug_name, taken_date),
+    INDEX idx_user_date (user_id, taken_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='老人服药打卡记录表';
+
+-- ----------------------------
 -- 11. 微信小程序订阅消息授权与发送记录表
 -- ----------------------------
 CREATE TABLE IF NOT EXISTS wx_subscribe_record (

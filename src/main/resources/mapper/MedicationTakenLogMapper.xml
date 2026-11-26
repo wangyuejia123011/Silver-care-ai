@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.elderly.mapper.MedicationTakenLogMapper">
+
+    <resultMap id="takenMap" type="com.elderly.entity.MedicationTakenLog">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="doseTime" column="dose_time"/>
+        <result property="drugName" column="drug_name"/>
+        <result property="takenDate" column="taken_date"/>
+        <result property="takenAt" column="taken_at"/>
+        <result property="source" column="source"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <sql id="cols">
+        id, user_id, dose_time, drug_name, taken_date, taken_at, source, create_time
+    </sql>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO medication_taken_log
+            (user_id, dose_time, drug_name, taken_date, taken_at, source, create_time)
+        VALUES (#{userId}, #{doseTime}, #{drugName}, #{takenDate},
+                #{takenAt}, #{source}, NOW())
+    </insert>
+
+    <delete id="deleteByKey">
+        DELETE FROM medication_taken_log
+        WHERE user_id = #{userId}
+          AND dose_time = #{doseTime}
+          AND drug_name = #{drugName}
+          AND taken_date = #{takenDate}
+    </delete>
+
+    <select id="countByKey" resultType="int">
+        SELECT COUNT(1) FROM medication_taken_log
+        WHERE user_id = #{userId}
+          AND dose_time = #{doseTime}
+          AND drug_name = #{drugName}
+          AND taken_date = #{takenDate}
+    </select>
+
+    <select id="selectByUserIdAndDate" resultMap="takenMap">
+        SELECT <include refid="cols"/> FROM medication_taken_log
+        WHERE user_id = #{userId} AND taken_date = #{takenDate}
+        ORDER BY dose_time ASC
+    </select>
+
+</mapper>

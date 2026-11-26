@@ -11,6 +11,7 @@ import com.elderly.util.ChromaUtil;
 import com.elderly.util.CnNumberUtil;
 import com.elderly.util.HealthRiskEvaluator;
 import com.elderly.util.LlmUtil;
+import com.elderly.util.OrderCooldownUtil;
 import com.elderly.util.PromptUtil;
 import jakarta.annotation.Resource;
 import org.slf4j.Logger;
@@ -68,6 +69,8 @@ public class HealthAgent {
     private OrderDispatchAgent orderDispatchAgent;
     @Resource
     private HealthNotifyService healthNotifyService;
+    @Resource
+    private OrderCooldownUtil orderCooldownUtil;
 
     // 数字 token：阿拉伯数字 或 中文数字（含小数），例如 120 / 七十 / 十六点五 / 一百二
     private static final String NUM_TOKEN =
@@ -184,28 +187,44 @@ public class HealthAgent {
             fullPrompt = "老人提问：" + userText + "（指标 " + dataSummary + "），请用50字以内通俗语气回答。";
         }
 
-        // ===== 6. 高危：立即固定警告 + 通知家属 + 自动工单 =====
+        // ===== 6. 高危：立即固定警告 + 通知家属 + 自动工单（带冷却，防重复派单） =====
         if (highRisk) {
+            // 防重复：同一老人同一组高危指标，2小时内只允许自动派单一次。
+            // 线上曾出现30秒连生成3个雷同工单（#127/#128/#129），严重打扰护工。
+            // SOS 手动呼救走前端 /api/order/smart-dispatch，不经过这里，不受冷却影响。
+            String fingerprint = OrderCooldownUtil.buildFingerprint(systolic, diastolic, heartRate, bloodSugar, temperature);
+            boolean allowDispatch = orderCooldownUtil.tryAcquire(userId, fingerprint);
+
             String warning = HealthRiskEvaluator.buildHighRiskWarning(buildTempRecord(systolic, diastolic,
                     heartRate, bloodSugar, temperature, userText));
-            warning += " 系统已通知家属和护工，马上会有人联系您！";
+            CareOrder order = null;
+            if (allowDispatch) {
+                warning += " 系统已通知家属和护工，马上会有人联系您！";
+            } else {
+                // 冷却中不再重复派人，但要给老人明确交代，避免以为没成功而反复喊
+                warning += " 护工已经收到您的消息正在赶来，不用重复呼叫；如果情况紧急，可以直接按SOS。";
+                log.info("高危工单冷却命中，跳过自动派单, userId={}, fingerprint={}", userId, fingerprint);
+            }
 
             HealthRecord record = buildRecord(userId, profile, systolic, diastolic, heartRate, bloodSugar,
                     temperature, "voice", normText, riskLevel);
             record.setIsAlert(1);
             record.setAiAdvice(warning);
-            persistAndNotify(record, userText);
+            // 冷却命中时连家属通知一起跳过，防止2小时内反复推送同一条预警打扰家属
+            persistAndNotify(record, userText, allowDispatch);
 
-            AgentResult orderResult = orderDispatchAgent.dispatch(
-                    "老人语音上报高危健康情况：" + dataSummary + "。原话：" + normText, userId, true);
-            CareOrder order = orderResult.getOrder();
+            if (allowDispatch) {
+                AgentResult orderResult = orderDispatchAgent.dispatch(
+                        "老人语音上报高危健康情况：" + dataSummary + "。原话：" + normText, userId, true);
+                order = orderResult.getOrder();
+            }
 
             AgentResult result = AgentResult.of("health", Flux.just(warning));
             result.setOrder(order);
             result.setRiskLevel(riskLevel);
             // 触发前端红色告警卡片（分级来自规则引擎，非大模型判断）
             result.setRiskJson(buildRiskEvent(riskLevel, systolic, diastolic, heartRate, bloodSugar, temperature));
-            attachNotifySummary(result, record, userText);
+            attachNotifySummary(result, record, userText, allowDispatch);
             return result;
         }
 
@@ -228,8 +247,8 @@ public class HealthAgent {
             HealthRecord record = buildRecord(userId, fProfile, fSystolic, fDiastolic, fHeartRate,
                     fBloodSugar, fTemperature, "voice", normText, fRisk);
             record.setAiAdvice(""); // 占位，流式完成后再更新
-            persistAndNotify(record, userText);
-            attachNotifySummary(result, record, userText);
+            persistAndNotify(record, userText, true);
+            attachNotifySummary(result, record, userText, true);
             recordId = record.getId();
         } catch (Exception e) {
             log.warn("健康记录同步落库失败: {}", e.getMessage());
@@ -493,21 +512,43 @@ public class HealthAgent {
         if (todayRecords != null && !todayRecords.isEmpty()) {
             sb.append("今天已有").append(todayRecords.size()).append("条健康记录。");
         }
-        sb.append("本次指标：");
-        sb.append("血压").append(systolic != null ? systolic + "/" + diastolic : "未提及").append("，");
-        sb.append("血糖").append(bloodSugar != null ? bloodSugar : "未提及").append("，");
-        sb.append("心率").append(heartRate != null ? heartRate : "未提及").append("，");
-        sb.append("体温").append(temperature != null ? temperature : "未提及").append("。");
-        sb.append("风险分级：").append(riskLevel).append("。");
+        // 大白话版：不用 null / high 这类开发者词汇，避免被模型照抄进工单和回答。
+        sb.append("这次测得：");
+        if (systolic != null) {
+            sb.append("高压").append(systolic);
+            if (diastolic != null) {
+                sb.append("、低压").append(diastolic);
+            } else {
+                sb.append("（低压没测）");
+            }
+            sb.append("，");
+        } else {
+            sb.append("血压没测，");
+        }
+        if (bloodSugar != null) sb.append("血糖").append(bloodSugar).append("，");
+        if (heartRate != null) sb.append("心率每分钟").append(heartRate).append("次，");
+        if (temperature != null) sb.append("体温").append(temperature).append("度，");
+        // 结尾用一句人话描述严重程度，不出现 high/medium/low
+        if ("high".equals(riskLevel)) {
+            sb.append("情况比较严重，需要尽快找人来看看。");
+        } else if ("medium".equals(riskLevel)) {
+            sb.append("有几项指标偏高，要多留意。");
+        } else {
+            sb.append("各项指标大体正常。");
+        }
         return sb.toString();
     }
 
-    private void persistAndNotify(HealthRecord record, String userText) {
+    private void persistAndNotify(HealthRecord record, String userText, boolean notify) {
         try {
             healthRecordService.saveRaw(record);
         } catch (Exception e) {
             log.error("健康记录落库失败，userId={}: {}", record.getUserId(), e.getMessage(), e);
             throw e;
+        }
+        if (!notify) {
+            // 冷却命中：本次只落库，不重复通知家属
+            return;
         }
         if ("medium".equals(record.getRiskLevel()) || "high".equals(record.getRiskLevel())) {
             try {
@@ -519,17 +560,19 @@ public class HealthAgent {
         }
     }
 
-    private void attachNotifySummary(AgentResult result, HealthRecord record, String userText) {
+    private void attachNotifySummary(AgentResult result, HealthRecord record, String userText, boolean notified) {
         if (!"medium".equals(record.getRiskLevel()) && !"high".equals(record.getRiskLevel())) {
             return;
         }
         Map<String, Object> summary = new HashMap<>();
         summary.put("riskLevel", record.getRiskLevel());
         summary.put("recordId", record.getId());
-        summary.put("notified", true);
-        summary.put("message", "high".equals(record.getRiskLevel())
-                ? "已通知绑定家属和护工"
-                : "指标异常，已通知绑定家属/护工");
+        summary.put("notified", notified);
+        summary.put("message", !notified
+                ? "刚通知过家属和护工，他们会尽快联系您；情况紧急请按SOS"
+                : ("high".equals(record.getRiskLevel())
+                    ? "已通知绑定家属和护工"
+                    : "指标异常，已通知绑定家属/护工"));
         result.setHealthNotifyJson(JSON.toJSONString(summary));
     }
 

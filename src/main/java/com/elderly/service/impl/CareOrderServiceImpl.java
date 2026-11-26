@@ -232,6 +232,18 @@ public class CareOrderServiceImpl implements CareOrderService {
             return raw;
         }
         String s = raw.replace("**", "").replace("__", "").replace("`", "");
+        // 大白话兜底：即使模型没听 prompt 的话，也不把开发者术语漏给老人/家属看
+        s = s.replace("风险分级：high", "情况比较严重")
+             .replace("风险分级：medium", "有几项指标偏高")
+             .replace("风险分级：low", "情况尚平稳")
+             .replace("风险等级：high", "情况比较严重")
+             .replace("风险等级：medium", "有几项指标偏高")
+             .replace("风险等级：low", "情况尚平稳");
+        // 数值/null 口语化：血压180/null → 高压180、低压没测
+        s = s.replace("血压180/null", "高压180、低压没测");
+        s = s.replaceAll("血压(\\d+(?:\\.\\d+)?)/null", "高压$1、低压没测");
+        s = s.replaceAll("血压(\\d+(?:\\.\\d+)?)/(\\d+)", "高压$1、低压$2");
+        s = s.replace("mmol/L", "").replace("mmHg", "").replace("℃", "度");
         // 标题符号（行首/行中）→ 换行
         s = s.replaceAll("#{1,6}", "\n");
         // 行首列表符号
@@ -239,7 +251,7 @@ public class CareOrderServiceImpl implements CareOrderService {
         // 残留的单独星号
         s = s.replace("*", "");
         // 常见字段标签前换行
-        s = s.replaceAll("\\s*(服务对象|当前状况|风险等级|是否携带设备|服务内容|行动建议|健康数据状态|健康数据|原因说明|温馨提示|温馨小贴士|小贴士|给您的小建议|小建议|护理建议|注意事项|回答)\\s*[:：]", "\n$1：");
+        s = s.replaceAll("\\s*(服务对象|当前状况|情况说明|风险等级|是否携带设备|服务内容|行动建议|健康数据状态|健康数据|原因说明|温馨提示|温馨小贴士|小贴士|给您的小建议|小建议|护理建议|注意事项|回答)\\s*[:：]", "\n$1：");
         // "是否需要携带医疗设备"（后面可能跟 ? 或 ：）
         s = s.replaceAll("\\s*(是否需要携带医疗设备)\\s*([?？:：]?)", "\n$1$2");
         // 数字编号前换行

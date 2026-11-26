@@ -23,6 +23,9 @@ public interface FamilyBindMapper {
 
     FamilyBind selectByOpenId(@Param("openId") String openId);
 
+    /** 按家属 openId 查询其绑定的全部老人（家属看板用） */
+    List<FamilyBind> selectListByOpenId(@Param("openId") String openId);
+
     List<FamilyBind> selectByCaregiverId(@Param("caregiverId") Long caregiverId);
 
     /** 注销老人时清理其全部绑定关系（家属/护工） */

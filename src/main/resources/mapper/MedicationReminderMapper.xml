@@ -49,4 +49,10 @@
         ORDER BY dose_time ASC
     </select>
 
+    <select id="selectAllEnabled" resultMap="reminderMap">
+        SELECT <include refid="cols"/> FROM medication_reminder
+        WHERE enabled = 1
+        ORDER BY user_id ASC, dose_time ASC
+    </select>
+
 </mapper>
