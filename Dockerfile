@@ -2,10 +2,12 @@
 # 使用 Maven + JDK21 镜像编译（JDK21 向下兼容项目所需的 Java 17）
 FROM maven:3.9.9-eclipse-temurin-21-jammy AS build
 WORKDIR /app
+COPY settings.xml ./settings.xml
 COPY pom.xml .
 COPY src ./src
 # 跳过测试快速打包，产出 Spring Boot fat-jar
-RUN mvn -B -q clean package -DskipTests
+# -s settings.xml：走阿里云 Maven 镜像，避免云托管构建机连不上 Maven Central 导致 parent POM 拉不下来
+RUN mvn -B -s settings.xml clean package -DskipTests
 
 # ==================== 运行阶段 ====================
 FROM eclipse-temurin:21-jre-jammy
