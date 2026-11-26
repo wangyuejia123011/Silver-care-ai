@@ -4,10 +4,13 @@ import com.elderly.common.R;
 import com.elderly.dto.LoginRequest;
 import com.elderly.entity.ElderlyUser;
 import com.elderly.service.ElderlyUserService;
+import com.elderly.util.NotifySwitchUtil;
 import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 老人用户接口 —— 登录注册、信息管理
@@ -18,6 +21,8 @@ public class UserController {
 
     @Resource
     private ElderlyUserService userService;
+    @Resource
+    private NotifySwitchUtil notifySwitchUtil;
 
     /**
      * 微信登录（根据openId查询或自动注册）
@@ -81,5 +86,32 @@ public class UserController {
     @GetMapping("/list")
     public R<List<ElderlyUser>> listAll() {
         return R.success(userService.listAll());
+    }
+
+    /**
+     * 老人端「通知家属」开关：写入后端，控制是否向绑定家属/护工推微信消息。
+     */
+    @PostMapping("/notify-switch")
+    public R<Map<String, Object>> setNotifySwitch(@RequestBody Map<String, Object> body) {
+        Object uid = body == null ? null : body.get("userId");
+        Object en = body == null ? null : body.get("enabled");
+        Long userId = uid == null ? null : Long.valueOf(String.valueOf(uid));
+        boolean enabled = en instanceof Boolean ? (Boolean) en : Boolean.parseBoolean(String.valueOf(en));
+        notifySwitchUtil.setEnabled(userId, enabled);
+        Map<String, Object> data = new HashMap<>();
+        data.put("userId", userId);
+        data.put("enabled", enabled);
+        return R.success("设置成功", data);
+    }
+
+    /**
+     * 查询「通知家属」开关当前状态（默认开启），供前端进入设置页时同步。
+     */
+    @GetMapping("/notify-switch")
+    public R<Map<String, Object>> getNotifySwitch(@RequestParam Long userId) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("userId", userId);
+        data.put("enabled", notifySwitchUtil.isEnabled(userId));
+        return R.success(data);
     }
 }

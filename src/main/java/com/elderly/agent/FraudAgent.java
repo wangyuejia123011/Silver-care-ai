@@ -13,6 +13,7 @@ import com.elderly.service.WxSubscribeService;
 import com.elderly.util.ChromaUtil;
 import com.elderly.util.FraudKeywordUtil;
 import com.elderly.util.LlmUtil;
+import com.elderly.util.NotifySwitchUtil;
 import com.elderly.util.PromptUtil;
 import jakarta.annotation.Resource;
 import org.slf4j.Logger;
@@ -63,6 +64,8 @@ public class FraudAgent {
     private FamilyBindMapper familyBindMapper;
     @Resource
     private WxSubscribeService wxSubscribeService;
+    @Resource
+    private NotifySwitchUtil notifySwitchUtil;
 
     /** 反诈顺口溜库（命中时随机播报） */
     private static final List<String> JINGLES = List.of(
@@ -319,6 +322,11 @@ public class FraudAgent {
     }
 
     private void pushFraudSubscribeMessage(Long userId, String content, String riskLevel, String advice) {
+        // 老人端「通知家属」总开关关闭时不推任何微信消息
+        if (!notifySwitchUtil.isEnabled(userId)) {
+            log.info("通知家属开关已关闭，跳过反诈微信推送 userId={}", userId);
+            return;
+        }
         try {
             List<FamilyBind> binds = familyBindMapper.selectEnabledByElderlyUserId(userId);
             if (binds == null || binds.isEmpty()) {

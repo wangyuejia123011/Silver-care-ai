@@ -9,6 +9,7 @@ import com.elderly.mapper.HealthNotifyMapper;
 import com.elderly.service.ElderlyUserService;
 import com.elderly.service.HealthNotifyService;
 import com.elderly.service.WxSubscribeService;
+import com.elderly.util.NotifySwitchUtil;
 import com.elderly.ws.OrderWebSocketHandler;
 import jakarta.annotation.Resource;
 import org.slf4j.Logger;
@@ -35,6 +36,8 @@ public class HealthNotifyServiceImpl implements HealthNotifyService {
     private OrderWebSocketHandler webSocketHandler;
     @Resource
     private WxSubscribeService wxSubscribeService;
+    @Resource
+    private NotifySwitchUtil notifySwitchUtil;
 
     @Override
     public List<HealthNotify> notifyBound(HealthRecord record, String voiceText) {
@@ -81,8 +84,9 @@ public class HealthNotifyServiceImpl implements HealthNotifyService {
                 healthNotifyMapper.insert(notify);
                 webSocketHandler.pushHealthAlert(notify);
 
-                // 微信订阅消息推送（仅 openId 非空时尝试；失败不影响主流程）
-                if (bind.getOpenId() != null && !bind.getOpenId().isBlank()) {
+                // 微信订阅消息推送（老人端总开关关闭时一律不推；openId 非空才尝试；失败不影响主流程）
+                if (notifySwitchUtil.isEnabled(record.getUserId())
+                        && bind.getOpenId() != null && !bind.getOpenId().isBlank()) {
                     try {
                         wxSubscribeService.sendHealthAbnormal(
                                 bind.getOpenId(),
